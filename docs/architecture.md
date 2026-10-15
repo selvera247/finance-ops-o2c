@@ -51,10 +51,23 @@ Coordinator tools: `search_policies`, `flag_for_human_review`,
 4. **Safety:** no silent write-offs; evidence required for recommended actions.
 5. **Roadmap:** fixtures → BigQuery → Vector Search → GraphRAG → AgentOps evals.
 
+## Test ladder
+
+| Rung | What | Command |
+| --- | --- | --- |
+| L0 | Fixture/unit smoke | `pytest`, `evals/run_eval.py` |
+| L1 | Live chat (AI Studio) | `adk run finance_ops` / `adk web` |
+| L2 | Trajectory scoring | `python evals/run_trajectory_eval.py` (`--dry-run` without key) |
+| L3+ | BigQuery / Vector / deploy | See roadmap below |
+
+L2 scores each `evals/cases.yaml` case on mentions, `evidence_id`,
+`needs_review`, and preferred specialist author. Reports land in
+`evals/results/latest.md`.
+
 ## Next build increments
 
-1. Wire `google-cloud-bigquery` behind invoice/payment tools.
-2. Replace keyword RAG with Vertex embeddings + Vector Search.
-3. Add eval harness scores (tool-call correctness, citation presence).
-4. Terraform + Cloud Run deploy skeleton.
-5. Sample CFO/CTO one-pager generated from eval + architecture notes.
+1. Wire `google-cloud-bigquery` behind invoice/payment tools (L3).
+2. Replace keyword RAG with Vertex embeddings + Vector Search (L4).
+3. Persist knowledge graph (Neo4j / Spanner Graph) (L5).
+4. Terraform + Cloud Run / Agent Runtime deploy skeleton (L6).
+5. Sample CFO/CTO one-pager from eval + architecture notes (L7).

@@ -1,32 +1,34 @@
-# Lightweight AgentOps cases. Expand into ADK eval / Vertex Gen AI eval later.
+# L2 trajectory cases for finance_ops (AI Studio live or --dry-run).
+# Scorer also requires an evidence_id citation in the final answer.
 cases:
   - id: aging-acme
-    prompt: "What is the open AR aging for Acme Corp (CUST-ACME)?"
+    prompt: "What is the open AR aging for Acme Corp (CUST-ACME)? Cite invoice ids and evidence_id."
     expect:
       must_mention: ["INV-1001", "INV-1002", "CUST-ACME"]
       preferred_agent: invoice_agent
 
   - id: unmatched-payment
-    prompt: "Which payments are unmatched and what invoice should PAY-9002 match?"
+    prompt: "Which payments are unmatched and what invoice should PAY-9002 match? Flag for review and cite evidence_id."
     expect:
       must_mention: ["PAY-9002", "PO-8891"]
       preferred_agent: payments_agent
       needs_review: true
 
   - id: contract-terms
-    prompt: "What are Northwind Traders payment terms and collections notes?"
+    prompt: "What are Northwind Traders payment terms and collections notes? Cite contract id and evidence_id."
     expect:
       must_mention: ["CTR-3100", "Net 45"]
       preferred_agent: contracts_agent
 
   - id: graph-walk
-    prompt: "Using the knowledge graph, how is PAY-9002 connected to Acme invoices?"
+    prompt: "Using the knowledge graph, how is PAY-9002 connected to Acme invoices? Cite entities and evidence_id."
     expect:
       must_mention: ["PAY-9002", "PO-8891", "CUST-ACME"]
       preferred_agent: reconciliation_agent
 
   - id: governance-flag
-    prompt: "Should we write off the remaining Northwind balance? Cite policy."
+    prompt: "Should we write off the remaining Northwind balance? Cite policy, require human review, and include evidence_id."
     expect:
       must_mention: ["needs_review", "evidence"]
       preferred_agent: finance_ops_coordinator
+      needs_review: true

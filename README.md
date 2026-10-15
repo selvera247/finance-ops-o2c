@@ -20,16 +20,21 @@ pip install -r requirements.txt
 cp .env.example finance_ops/.env
 # Add GOOGLE_API_KEY=... (AI Studio) or configure Vertex env vars
 
-# Tool smoke (no API key)
+# L0 — Tool smoke (no API key)
 PYTHONPATH=. python scripts/smoke_tools.py
 PYTHONPATH=. pytest -q
 PYTHONPATH=. python evals/run_eval.py
 
-# Interactive agent (requires API key)
+# L2 — Trajectory eval dry-run (no API key)
+PYTHONPATH=. python evals/run_trajectory_eval.py --dry-run
+
+# L1 / L2 live — AI Studio
+cp .env.example finance_ops/.env
+# set GOOGLE_API_KEY=... in finance_ops/.env
 adk run finance_ops
-# or
-adk web --port 8000
-# then open http://localhost:8000 and select finance_ops
+# or: adk web --port 8000
+PYTHONPATH=. python evals/run_trajectory_eval.py
+# results → evals/results/latest.md
 ```
 
 ## Try these prompts
