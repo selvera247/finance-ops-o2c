@@ -1,0 +1,32 @@
+# Lightweight AgentOps cases. Expand into ADK eval / Vertex Gen AI eval later.
+cases:
+  - id: aging-acme
+    prompt: "What is the open AR aging for Acme Corp (CUST-ACME)?"
+    expect:
+      must_mention: ["INV-1001", "INV-1002", "CUST-ACME"]
+      preferred_agent: invoice_agent
+
+  - id: unmatched-payment
+    prompt: "Which payments are unmatched and what invoice should PAY-9002 match?"
+    expect:
+      must_mention: ["PAY-9002", "PO-8891"]
+      preferred_agent: payments_agent
+      needs_review: true
+
+  - id: contract-terms
+    prompt: "What are Northwind Traders payment terms and collections notes?"
+    expect:
+      must_mention: ["CTR-3100", "Net 45"]
+      preferred_agent: contracts_agent
+
+  - id: graph-walk
+    prompt: "Using the knowledge graph, how is PAY-9002 connected to Acme invoices?"
+    expect:
+      must_mention: ["PAY-9002", "PO-8891", "CUST-ACME"]
+      preferred_agent: reconciliation_agent
+
+  - id: governance-flag
+    prompt: "Should we write off the remaining Northwind balance? Cite policy."
+    expect:
+      must_mention: ["needs_review", "evidence"]
+      preferred_agent: finance_ops_coordinator
