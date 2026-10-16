@@ -1,32 +1,51 @@
 from __future__ import annotations
 
-"""BigQuery adapter stub.
-
-Local fixtures are the default. Set FINANCE_OPS_USE_BIGQUERY=true and configure
-GOOGLE_CLOUD_PROJECT + FINANCE_OPS_BQ_DATASET to switch tools to live queries.
-"""
-
 from typing import Any
 
-from finance_ops.lib.config import bigquery_dataset, gcp_project, use_bigquery
+from data_plane.config import bigquery_dataset, data_mode, gcp_project
+from data_plane.vectors.embed import vertex_vector_status
+from data_plane.warehouse import db
 
 
 def bigquery_status() -> dict[str, Any]:
-    """Report whether BigQuery mode is enabled and which project/dataset apply."""
-    enabled = use_bigquery()
+    """Report data-plane mode and warehouse / BigQuery / vector readiness."""
+    mode = data_mode()
     project = gcp_project()
     dataset = bigquery_dataset()
-    ready = bool(enabled and project)
+    duck_ready = False
+    try:
+        from data_plane.config import DUCKDB_PATH
+
+        duck_ready = DUCKDB_PATH.exists()
+        counts = {}
+        if duck_ready:
+            counts = {
+                "invoices": db.query_dicts("SELECT COUNT(*) AS n FROM invoices")[0]["n"],
+                "payments": db.query_dicts("SELECT COUNT(*) AS n FROM payments")[0]["n"],
+                "features": db.query_dicts("SELECT COUNT(*) AS n FROM customer_features")[0][
+                    "n"
+                ],
+                "stream_events": db.query_dicts("SELECT COUNT(*) AS n FROM stream_events")[
+                    0
+                ]["n"],
+            }
+    except Exception as exc:  # noqa: BLE001
+        counts = {"error": str(exc)}
+
     return {
         "status": "success",
-        "use_bigquery": enabled,
+        "data_mode": mode,
         "project": project,
         "dataset": dataset,
-        "ready": ready,
-        "note": (
-            "Live BigQuery queries are not wired in this scaffold yet. "
-            "Keep FINANCE_OPS_USE_BIGQUERY=false and use fixtures, or extend "
-            "this module with google-cloud-bigquery clients."
-        ),
-        "needs_review": enabled and not ready,
+        "duckdb_ready": duck_ready,
+        "warehouse_counts": counts,
+        "vertex_vectors": vertex_vector_status(),
+        "gcp_mapping": {
+            "batch": "JSON/sources → Dataflow/batch → BigQuery",
+            "stream": "Pub/Sub → Dataflow → BigQuery",
+            "features": "scheduled SQL / Vertex Feature Store",
+            "vectors": "Vertex AI embeddings + Vector Search",
+            "agents": "ADK on Cloud Run / Agent Runtime",
+        },
+        "needs_review": mode == "bigquery" and not project,
     }

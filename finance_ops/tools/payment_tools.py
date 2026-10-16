@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_plane import repository as repo
 from finance_ops.lib.evidence import record_evidence
-from finance_ops.lib.fixtures import invoices, payments
 
 
 def lookup_payment(payment_id: str) -> dict[str, Any]:
     """Look up a payment by payment_id (e.g. PAY-9002)."""
     payment_id = payment_id.strip().upper()
-    match = next((p for p in payments() if p["payment_id"] == payment_id), None)
+    match = repo.get_payment(payment_id)
     if not match:
         result = {
             "status": "not_found",
@@ -17,14 +17,20 @@ def lookup_payment(payment_id: str) -> dict[str, Any]:
             "needs_review": True,
         }
     else:
-        result = {"status": "success", "payment": match, "needs_review": False}
+        result = {
+            "status": "success",
+            "payment": {
+                k: (str(v) if hasattr(v, "isoformat") else v) for k, v in match.items()
+            },
+            "needs_review": False,
+        }
 
     evidence = record_evidence(
         agent="payments_agent",
         action="lookup_payment",
         inputs={"payment_id": payment_id},
         outputs=result,
-        sources=["fixture:payments.json"] if match else [],
+        sources=[repo.source_label()] if match else [],
     )
     result["evidence"] = evidence
     return result
@@ -32,24 +38,23 @@ def lookup_payment(payment_id: str) -> dict[str, Any]:
 
 def list_unmatched_payments(customer_id: str | None = None) -> dict[str, Any]:
     """List payments that are unmatched or only partially applied."""
-    rows = [
-        p
-        for p in payments()
-        if p["status"] in {"unmatched", "partial"}
-        and (customer_id is None or p["customer_id"] == customer_id)
+    rows = repo.list_payments(customer_id=customer_id, unmatched_only=True)
+    clean = [
+        {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in row.items()}
+        for row in rows
     ]
     result = {
         "status": "success",
-        "count": len(rows),
-        "payments": rows,
-        "needs_review": len(rows) > 0,
+        "count": len(clean),
+        "payments": clean,
+        "needs_review": len(clean) > 0,
     }
     evidence = record_evidence(
         agent="payments_agent",
         action="list_unmatched_payments",
         inputs={"customer_id": customer_id},
-        outputs={"count": len(rows)},
-        sources=["fixture:payments.json"],
+        outputs={"count": len(clean)},
+        sources=[repo.source_label()],
     )
     result["evidence"] = evidence
     return result
@@ -58,7 +63,7 @@ def list_unmatched_payments(customer_id: str | None = None) -> dict[str, Any]:
 def suggest_payment_match(payment_id: str) -> dict[str, Any]:
     """Suggest invoice matches for an unmatched/partial payment using simple rules."""
     payment_id = payment_id.strip().upper()
-    payment = next((p for p in payments() if p["payment_id"] == payment_id), None)
+    payment = repo.get_payment(payment_id)
     if not payment:
         result = {
             "status": "not_found",
@@ -76,18 +81,14 @@ def suggest_payment_match(payment_id: str) -> dict[str, Any]:
         return result
 
     candidates = []
-    for inv in invoices():
-        if inv["customer_id"] != payment["customer_id"]:
-            continue
-        if inv["status"] not in {"open", "past_due"}:
-            continue
+    for inv in repo.list_invoices(customer_id=payment["customer_id"], open_only=True):
         score = 0.0
         reasons: list[str] = []
         ref = (payment.get("reference") or "").upper()
         if inv["invoice_id"] in ref:
             score += 0.7
             reasons.append("invoice_id_in_reference")
-        if inv.get("po_number") and inv["po_number"] in ref:
+        if inv.get("po_number") and str(inv["po_number"]) in ref:
             score += 0.4
             reasons.append("po_in_reference")
         amount_delta = abs(float(inv["amount"]) - float(payment["amount"]))
@@ -109,9 +110,12 @@ def suggest_payment_match(payment_id: str) -> dict[str, Any]:
             )
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
+    payment_clean = {
+        k: (str(v) if hasattr(v, "isoformat") else v) for k, v in payment.items()
+    }
     result = {
         "status": "success",
-        "payment": payment,
+        "payment": payment_clean,
         "candidates": candidates[:5],
         "needs_review": True,
         "recommendation": candidates[0]["invoice_id"] if candidates else None,
@@ -124,7 +128,7 @@ def suggest_payment_match(payment_id: str) -> dict[str, Any]:
             "recommendation": result["recommendation"],
             "candidate_count": len(candidates),
         },
-        sources=["fixture:payments.json", "fixture:invoices.json", "policy:POL-RECON-01"],
+        sources=[repo.source_label(), "policy:POL-RECON-01"],
     )
     result["evidence"] = evidence
     return result

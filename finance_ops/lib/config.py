@@ -2,22 +2,17 @@ from __future__ import annotations
 
 import os
 
+# Re-export data-plane helpers for agent modules
+from data_plane.config import (  # noqa: F401
+    bigquery_dataset,
+    data_mode,
+    gcp_project,
+)
+
 
 def use_bigquery() -> bool:
     """When true, tools prefer BigQuery over local JSON fixtures."""
-    return os.getenv("FINANCE_OPS_USE_BIGQUERY", "false").lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
-def gcp_project() -> str | None:
-    return os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
-
-
-def bigquery_dataset() -> str:
-    return os.getenv("FINANCE_OPS_BQ_DATASET", "finance_ops")
+    return data_mode() == "bigquery"
 
 
 def default_model() -> str:

@@ -21,14 +21,17 @@ Delegation uses ADK `sub_agents` (LLM-driven routing by specialist
 
 ## Data plane (current → target)
 
-| Layer | Scaffold (now) | Production target |
+See also [data-to-ai-architecture.md](data-to-ai-architecture.md) for the full E2E stack.
+
+| Layer | Local E2E (now) | Production target |
 | --- | --- | --- |
-| Operational data | `data/*.json` fixtures | BigQuery (`FINANCE_OPS_USE_BIGQUERY`) |
-| Pipelines | n/a | Pub/Sub → Dataflow → BigQuery |
-| Semantic graph | `knowledge_graph.json` | Neo4j / Spanner Graph + sync jobs |
-| Vectors / RAG | keyword search over `rag_corpus.json` | Vertex AI Vector Search + embeddings |
+| Operational data | DuckDB warehouse (from `data/*.json`) | BigQuery `finance_ops` |
+| Pipelines | `pipelines/batch` + stream simulator | Pub/Sub → Dataflow → BigQuery |
+| Features / ML | `customer_features` table | Vertex Feature Store / scheduled SQL |
+| Semantic graph | `kg_nodes` / `kg_edges` in warehouse | Neo4j / Spanner Graph + sync jobs |
+| Vectors / RAG | local hash embeddings + cosine | Vertex AI Vector Search + embeddings |
 | Runtime | `adk run` / `adk web` | Cloud Run or Vertex Agent Runtime |
-| IaC | n/a | Terraform modules (next iteration) |
+| IaC | `infra/terraform` skeleton | apply to GCP project |
 
 ## Governance / AgentOps
 

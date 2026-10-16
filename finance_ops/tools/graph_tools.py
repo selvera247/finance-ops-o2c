@@ -3,16 +3,15 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from typing import Any
 
+from data_plane import repository as repo
 from finance_ops.lib.evidence import record_evidence
-from finance_ops.lib.fixtures import knowledge_graph
 
 
 def _adjacency() -> dict[str, list[tuple[str, str]]]:
-    graph = knowledge_graph()
+    graph = repo.knowledge_graph()
     adj: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for edge in graph["edges"]:
         adj[edge["source"]].append((edge["target"], edge["type"]))
-        # undirected traversal for exploratory GraphRAG-style walks
         adj[edge["target"]].append((edge["source"], f"INV:{edge['type']}"))
     return adj
 
@@ -20,7 +19,7 @@ def _adjacency() -> dict[str, list[tuple[str, str]]]:
 def get_entity(entity_id: str) -> dict[str, Any]:
     """Fetch a knowledge-graph node and its immediate edges."""
     entity_id = entity_id.strip().upper()
-    graph = knowledge_graph()
+    graph = repo.knowledge_graph()
     node = next((n for n in graph["nodes"] if n["id"] == entity_id), None)
     if not node:
         result = {"status": "not_found", "entity_id": entity_id, "needs_review": True}
@@ -50,7 +49,7 @@ def get_entity(entity_id: str) -> dict[str, Any]:
         action="get_entity",
         inputs={"entity_id": entity_id},
         outputs={"edge_count": len(edges)},
-        sources=["fixture:knowledge_graph.json"],
+        sources=[repo.source_label() + ":knowledge_graph"],
     )
     result["evidence"] = evidence
     return result
@@ -60,7 +59,7 @@ def graph_neighborhood(entity_id: str, max_hops: int = 2) -> dict[str, Any]:
     """Multi-hop neighborhood walk for GraphRAG-style reasoning."""
     entity_id = entity_id.strip().upper()
     max_hops = max(1, min(int(max_hops), 4))
-    graph = knowledge_graph()
+    graph = repo.knowledge_graph()
     nodes_by_id = {n["id"]: n for n in graph["nodes"]}
     if entity_id not in nodes_by_id:
         result = {"status": "not_found", "entity_id": entity_id, "needs_review": True}
@@ -110,7 +109,7 @@ def graph_neighborhood(entity_id: str, max_hops: int = 2) -> dict[str, Any]:
         action="graph_neighborhood",
         inputs={"entity_id": entity_id, "max_hops": max_hops},
         outputs={"nodes_reached": len(visited)},
-        sources=["fixture:knowledge_graph.json"],
+        sources=[repo.source_label() + ":knowledge_graph"],
     )
     result["evidence"] = evidence
     return result

@@ -14,14 +14,16 @@ Built with [Google Agent Development Kit (ADK)](https://adk.dev).
 ```bash
 cd finance-multi-agent
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 cp .env.example finance_ops/.env
-# Add GOOGLE_API_KEY=... (AI Studio) or configure Vertex env vars
+# Add GOOGLE_API_KEY=... (AI Studio) for live agents
 
-# L0 — Tool smoke (no API key)
-PYTHONPATH=. python scripts/smoke_tools.py
+# End-to-end Data → AI (warehouse + stream + features + vectors + tool smoke)
+PYTHONPATH=. python scripts/run_e2e_data_to_ai.py
+
+# L0 — tests
 PYTHONPATH=. pytest -q
 PYTHONPATH=. python evals/run_eval.py
 
@@ -29,13 +31,12 @@ PYTHONPATH=. python evals/run_eval.py
 PYTHONPATH=. python evals/run_trajectory_eval.py --dry-run
 
 # L1 / L2 live — AI Studio
-cp .env.example finance_ops/.env
-# set GOOGLE_API_KEY=... in finance_ops/.env
 adk run finance_ops
 # or: adk web --port 8000
 PYTHONPATH=. python evals/run_trajectory_eval.py
-# results → evals/results/latest.md
 ```
+
+Architecture: [docs/data-to-ai-architecture.md](docs/data-to-ai-architecture.md)
 
 ## Try these prompts
 
@@ -49,27 +50,28 @@ PYTHONPATH=. python evals/run_trajectory_eval.py
 
 ```text
 finance-multi-agent/
-├── finance_ops/                 # ADK app (root_agent)
-│   ├── agent.py                 # coordinator
-│   ├── specialists/             # invoice / payments / contracts / reconciliation
-│   ├── tools/                   # fixture-backed tools + BQ stub
-│   └── lib/                     # fixtures, evidence, config
-├── data/                        # invoices, payments, contracts, graph, RAG corpus
-├── docs/architecture.md         # client-ready architecture notes
-├── evals/                       # cases.yaml + offline tool eval
-├── tests/
-└── scripts/smoke_tools.py
+├── finance_ops/                 # ADK agents (coordinator + specialists)
+├── data_plane/                  # warehouse, features, vectors, repository
+├── pipelines/                   # batch ingest + stream simulator
+├── data/                        # source fixtures
+├── infra/terraform/             # BigQuery + Pub/Sub + Artifact Registry
+├── docs/data-to-ai-architecture.md
+├── evals/                       # L0 + L2 trajectory eval
+├── scripts/run_e2e_data_to_ai.py
+└── tests/
 ```
 
 ## Design choices
 
-| Concern | Choice now | Next step |
+| Concern | Choice now | GCP target |
 | --- | --- | --- |
-| Data | JSON fixtures in `data/` | BigQuery via `FINANCE_OPS_USE_BIGQUERY` |
-| RAG | Keyword search over policies | Vertex AI Vector Search |
-| Graph | In-memory walk over JSON KG | Neo4j / Spanner Graph + GraphRAG |
-| Governance | `.evidence/EVD-*.json` per tool call | Central audit store + tracing |
-| Deploy | Local `adk run` / `adk web` | Cloud Run / Agent Runtime + Terraform |
+| Warehouse | DuckDB (`.warehouse/`) | BigQuery |
+| Streaming | Local JSONL simulator | Pub/Sub → Dataflow |
+| Features | `customer_features` table | Feature Store / scheduled SQL |
+| RAG | Local hash vectors | Vertex Vector Search |
+| Graph | Warehouse KG tables | Neo4j / Spanner Graph |
+| Agents | Google ADK | Cloud Run / Agent Runtime |
+| IaC | `infra/terraform` skeleton | apply to your project |
 
 ## Why this portfolio story works
 
