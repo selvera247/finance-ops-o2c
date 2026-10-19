@@ -10,6 +10,7 @@ DUCKDB_PATH = Path(os.getenv("FINANCE_OPS_DUCKDB", str(WAREHOUSE_DIR / "finance_
 VECTOR_DIR = Path(os.getenv("FINANCE_OPS_VECTOR_DIR", str(WAREHOUSE_DIR / "vectors")))
 STREAM_DIR = Path(os.getenv("FINANCE_OPS_STREAM_DIR", str(WAREHOUSE_DIR / "stream")))
 DOWNLOAD_DIR = Path(os.getenv("FINANCE_OPS_DOWNLOAD_DIR", str(REPO_ROOT / ".downloads")))
+INCOMING_DIR = Path(os.getenv("FINANCE_OPS_INCOMING_DIR", str(DATA_DIR / "incoming")))
 
 
 def data_mode() -> str:
@@ -34,3 +35,6 @@ def ensure_dirs() -> None:
     VECTOR_DIR.mkdir(parents=True, exist_ok=True)
     STREAM_DIR.mkdir(parents=True, exist_ok=True)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    for portal in ("legacy_bank", "sagesure", "payer_availity"):
+        (INCOMING_DIR / portal).mkdir(parents=True, exist_ok=True)
+        (INCOMING_DIR / portal / "processed").mkdir(parents=True, exist_ok=True)

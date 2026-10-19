@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS customer_features (
   computed_at TIMESTAMP
 );
 
+-- Legacy compatibility table (still filled for bank CSV shape)
 CREATE TABLE IF NOT EXISTS bank_statements (
   statement_id VARCHAR,
   account_id VARCHAR,
@@ -86,6 +87,24 @@ CREATE TABLE IF NOT EXISTS bank_statements (
   amount DOUBLE,
   currency VARCHAR,
   source_file VARCHAR,
+  ingested_at TIMESTAMP
+);
+
+-- Canonical multi-portal extract contract (bank, SageSure-like, payer, etc.)
+CREATE TABLE IF NOT EXISTS portal_extracts (
+  extract_id VARCHAR PRIMARY KEY,
+  portal_id VARCHAR,
+  extract_type VARCHAR,
+  external_id VARCHAR,
+  entity_id VARCHAR,
+  txn_date DATE,
+  amount DOUBLE,
+  currency VARCHAR,
+  description VARCHAR,
+  status VARCHAR,
+  payload_json VARCHAR,
+  source_file VARCHAR,
+  batch_id VARCHAR,
   ingested_at TIMESTAMP
 );
 

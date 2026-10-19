@@ -20,6 +20,7 @@ cp .env.example finance_ops/.env
 
 PYTHONPATH=. python scripts/run_e2e_data_to_ai.py
 PYTHONPATH=. python scripts/run_gui_connector.py
+PYTHONPATH=. python scripts/process_incoming.py   # SageSure + payer sample CSVs
 PYTHONPATH=. pytest -q
 
 adk web --port 8000
@@ -36,6 +37,12 @@ scripts/              e2e + gui runners
 docs/                 architecture notes
 ```
 
-## GUI demo prompt (after `run_gui_connector.py`)
+## Portal extract prompts (after GUI / process_incoming)
 
-In ADK web: `List bank statements for ACC-1001 and cite evidence_id.`
+```text
+List portal extracts for portal_id=sagesure and cite evidence_id.
+List portal extracts for payer_availity with claim statuses.
+List bank statements for ACC-1001 and cite evidence_id.
+```
+
+Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.

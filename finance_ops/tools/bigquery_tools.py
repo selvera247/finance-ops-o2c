@@ -23,6 +23,9 @@ def bigquery_status() -> dict[str, Any]:
                 "features": db.query_dicts("SELECT COUNT(*) AS n FROM customer_features")[0]["n"],
                 "stream_events": db.query_dicts("SELECT COUNT(*) AS n FROM stream_events")[0]["n"],
                 "bank_statements": db.query_dicts("SELECT COUNT(*) AS n FROM bank_statements")[0]["n"],
+                "portal_extracts": db.query_dicts("SELECT COUNT(*) AS n FROM portal_extracts")[0][
+                    "n"
+                ],
             }
     except Exception as exc:  # noqa: BLE001
         counts = {"error": str(exc)}

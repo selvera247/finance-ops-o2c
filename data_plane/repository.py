@@ -113,6 +113,7 @@ def customer_features(customer_id: str | None = None) -> list[dict[str, Any]]:
 
 
 def bank_statements(account_id: str | None = None) -> list[dict[str, Any]]:
+    """Legacy helper — bank_statement rows (compat table)."""
     if not _warehouse_ready():
         return []
     from data_plane.warehouse import db
@@ -120,6 +121,32 @@ def bank_statements(account_id: str | None = None) -> list[dict[str, Any]]:
     if account_id:
         return db.query_dicts("SELECT * FROM bank_statements WHERE account_id = ?", [account_id])
     return db.query_dicts("SELECT * FROM bank_statements")
+
+
+def portal_extracts(
+    *,
+    portal_id: str | None = None,
+    extract_type: str | None = None,
+    entity_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Canonical multi-portal extracts (bank, SageSure-like, payer, etc.)."""
+    if not _warehouse_ready():
+        return []
+    from data_plane.warehouse import db
+
+    sql = "SELECT * FROM portal_extracts WHERE 1=1"
+    params: list[Any] = []
+    if portal_id:
+        sql += " AND portal_id = ?"
+        params.append(portal_id)
+    if extract_type:
+        sql += " AND extract_type = ?"
+        params.append(extract_type)
+    if entity_id:
+        sql += " AND entity_id = ?"
+        params.append(entity_id)
+    sql += " ORDER BY ingested_at DESC"
+    return db.query_dicts(sql, params)
 
 
 def source_label() -> str:

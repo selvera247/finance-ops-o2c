@@ -1,4 +1,4 @@
-"""Agent-callable wrappers around the GUI connector (mock portal only)."""
+"""Agent-callable wrappers for GUI extract + portal_extracts reads."""
 
 from __future__ import annotations
 
@@ -8,12 +8,13 @@ from finance_ops.lib.evidence import record_evidence
 
 
 def fetch_legacy_bank_statement() -> dict[str, Any]:
-    """Use Playwright to log into the mock legacy portal and ingest the CSV.
-
-    Requires the mock portal to be running (scripts/run_gui_connector.py starts it).
-    """
+    """Playwright: mock bank portal → data/incoming/legacy_bank → portal_extracts."""
     from gui_connectors.agent.playwright_connector import download_bank_statement
-    from gui_connectors.ingest.statement_ingest import ingest_bank_statement_csv
+    from gui_connectors.ingest.portal_ingest import (
+        ingest_portal_csv,
+        process_incoming,
+        stage_file_to_incoming,
+    )
 
     gui = download_bank_statement()
     if gui.get("status") != "success" or not gui.get("downloaded_file"):
@@ -21,42 +22,93 @@ def fetch_legacy_bank_statement() -> dict[str, Any]:
             "status": "error",
             "gui": gui,
             "needs_review": True,
-            "hint": "Start mock portal: PYTHONPATH=. python scripts/run_gui_connector.py",
+            "hint": "Start mock portal via scripts/run_gui_connector.py",
         }
         result["evidence"] = record_evidence(
-            agent="coordinator", action="fetch_legacy_bank_statement",
-            inputs={}, outputs=result, sources=["gui:legacy_portal"],
+            agent="coordinator",
+            action="fetch_legacy_bank_statement",
+            inputs={},
+            outputs=result,
+            sources=["gui:legacy_bank"],
         )
         return result
 
-    ingest = ingest_bank_statement_csv(gui["downloaded_file"])
+    staged = stage_file_to_incoming("legacy_bank", gui["downloaded_file"])
+    ingest = ingest_portal_csv("legacy_bank", staged, extract_type="bank_statement")
+    # Also drain any other queued CSVs for this portal
+    watcher = process_incoming("legacy_bank")
     result = {
         "status": "success" if ingest.get("status") == "success" else "error",
         "gui": gui,
+        "staged": str(staged),
         "ingest": ingest,
+        "incoming_watcher": watcher,
         "needs_review": False,
     }
     result["evidence"] = record_evidence(
-        agent="coordinator", action="fetch_legacy_bank_statement",
-        inputs={}, outputs={"rows": ingest.get("rows"), "file": gui.get("downloaded_file")},
-        sources=["gui:legacy_portal", f"file:{gui.get('downloaded_file')}"],
+        agent="coordinator",
+        action="fetch_legacy_bank_statement",
+        inputs={},
+        outputs={"rows": ingest.get("rows"), "batch_id": ingest.get("batch_id")},
+        sources=["gui:legacy_bank", f"incoming:{staged}"],
+    )
+    return result
+
+
+def process_portal_incoming(portal_id: str | None = None) -> dict[str, Any]:
+    """Ingest any CSVs waiting in data/incoming/<portal_id>/ (drop-zone watcher)."""
+    from gui_connectors.ingest.portal_ingest import process_incoming
+
+    watcher = process_incoming(portal_id)
+    result = {**watcher, "needs_review": watcher.get("status") != "success"}
+    result["evidence"] = record_evidence(
+        agent="coordinator",
+        action="process_portal_incoming",
+        inputs={"portal_id": portal_id},
+        outputs={"files_processed": watcher.get("files_processed")},
+        sources=[f"incoming:{portal_id or '*'}"],
+    )
+    return result
+
+
+def list_portal_extracts(
+    portal_id: str | None = None,
+    extract_type: str | None = None,
+    entity_id: str | None = None,
+) -> dict[str, Any]:
+    """List rows from the canonical portal_extracts table."""
+    from data_plane import repository as repo
+
+    rows = repo.portal_extracts(
+        portal_id=portal_id, extract_type=extract_type, entity_id=entity_id
+    )
+    clean = [
+        {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in r.items()} for r in rows
+    ]
+    result = {
+        "status": "success",
+        "count": len(clean),
+        "extracts": clean,
+        "needs_review": len(clean) == 0,
+    }
+    result["evidence"] = record_evidence(
+        agent="coordinator",
+        action="list_portal_extracts",
+        inputs={
+            "portal_id": portal_id,
+            "extract_type": extract_type,
+            "entity_id": entity_id,
+        },
+        outputs={"count": len(clean)},
+        sources=[repo.source_label() + ":portal_extracts"],
     )
     return result
 
 
 def list_bank_statements(account_id: str | None = None) -> dict[str, Any]:
-    """List bank statement rows already ingested from the GUI connector."""
-    from data_plane import repository as repo
-
-    rows = repo.bank_statements(account_id)
-    clean = [{k: (str(v) if hasattr(v, "isoformat") else v) for k, v in r.items()} for r in rows]
-    result = {
-        "status": "success", "count": len(clean), "statements": clean,
-        "needs_review": len(clean) == 0,
-    }
-    result["evidence"] = record_evidence(
-        agent="coordinator", action="list_bank_statements",
-        inputs={"account_id": account_id}, outputs={"count": len(clean)},
-        sources=[repo.source_label() + ":bank_statements"],
+    """Back-compat: bank portal extracts filtered to bank_statement / entity_id."""
+    return list_portal_extracts(
+        portal_id="legacy_bank",
+        extract_type="bank_statement",
+        entity_id=account_id,
     )
-    return result

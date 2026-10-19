@@ -6,6 +6,8 @@ __pycache__/
 .evidence/
 .warehouse/
 .downloads/
+data/incoming/**/processed/
+data/incoming/legacy_bank/*.csv
 evals/results/trajectory_*.json
 *.egg-info/
 dist/

@@ -1,36 +1,46 @@
-# GUI Connector (Legacy Portal → Warehouse)
+# GUI Connector + Portal Extract Contract
 
-Enterprise finance systems often lack APIs. This module demonstrates a
-**DOM-first Playwright agent** against a local mock bank portal, then ingests
-the downloaded CSV into the Data→AI warehouse for `finance_ops` agents.
+Enterprise portals without APIs are unlocked by a **narrow GUI agent**. Extracted
+files land in a drop zone, then ingest into a **canonical** warehouse table that
+insurance (SageSure-like) and medical billing (payer) portals share.
 
 ```text
-Mock legacy portal (login → menus → CSV)
-        │  Playwright (selectors + optional screenshot)
+Portal UI (mock bank / SageSure / Availity-like)
+        │  Playwright (DOM) or future vision/SoM
         ▼
-   .downloads/*.csv
-        │  statement_ingest
+ data/incoming/<portal_id>/*.csv
+        │  process_incoming / portal_ingest
         ▼
- warehouse.bank_statements
+ warehouse.portal_extracts   ← canonical
         │
+        ├─ bank_statements   ← compat for bank CSV shape
         ▼
- finance_ops tools (list_bank_statements / coordinator)
+ finance_ops tools
+   list_portal_extracts / process_portal_incoming / fetch_legacy_bank_statement
 ```
+
+## Drop zones
+
+| Folder | Demo extract type | Example keys |
+| --- | --- | --- |
+| `data/incoming/legacy_bank/` | `bank_statement` | statement_id, account_id, amount |
+| `data/incoming/sagesure/` | `policy_status` | policy_id, status, premium |
+| `data/incoming/payer_availity/` | `claim_status` / remittance | claim_id, paid_amount, trn |
 
 ## Run
 
 ```bash
+# Full GUI path (mock bank)
 PYTHONPATH=. python scripts/run_gui_connector.py
-# or separately:
-PYTHONPATH=. python -m gui_connectors.mock_portal.server --port 8765
-PYTHONPATH=. python -m gui_connectors.agent.playwright_connector
+
+# Drain any queued CSVs (SageSure / payer samples included)
+PYTHONPATH=. python scripts/process_incoming.py
+PYTHONPATH=. python scripts/process_incoming.py --portal sagesure
 ```
 
-Demo credentials: `analyst` / `demo123`
+## Design rules
 
-## Design notes
-
-- **DOM first** (`data-testid` selectors) for reliability.
-- Screenshot captured on Statements page for Set-of-Mark / vision demos.
-- No real bank credentials — mock portal only.
-- Vision/SoM can be layered later where DOM fails (canvas, iframe hell).
+1. GUI only extracts and files — it does not update systems of record.
+2. Matching / exceptions stay in ADK agents (`needs_review`, evidence IDs).
+3. `portal_extracts.payload_json` keeps the full raw row for flexible fields.
+4. Start with mock/demo CSVs; swap in real portal credentials later via secrets.
