@@ -1,0 +1,163 @@
+{
+  "generated_at": "2026-10-15T12:00:06.460846+00:00",
+  "mode": "dry-run",
+  "auth": "ai_studio",
+  "summary": {
+    "case_count": 5,
+    "passed": 5,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "avg_overall": 1.0
+  },
+  "scores": [
+    {
+      "case_id": "aging-acme",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "Acme CUST-ACME open AR: INV-1001 ($12,500, 1-30) and INV-1002 ($4,200, 31-60). evidence_id=EVD-dry-aging.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "invoice_agent"
+      ],
+      "tools_called": [
+        "aging_summary"
+      ]
+    },
+    {
+      "case_id": "unmatched-payment",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "PAY-9002 is unmatched; references PO-8891. Best candidate INV-1002. needs_review=true. evidence_id=EVD-dry-pay.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "payments_agent"
+      ],
+      "tools_called": [
+        "list_unmatched_payments",
+        "suggest_payment_match"
+      ]
+    },
+    {
+      "case_id": "contract-terms",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "Northwind CTR-3100 payment terms are Net 45. Collections contact required after 60 days. evidence_id=EVD-dry-ctr.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "contracts_agent"
+      ],
+      "tools_called": [
+        "lookup_customer_contract"
+      ]
+    },
+    {
+      "case_id": "graph-walk",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "PAY-9002 links to CUST-ACME via PO-8891 and open invoices. evidence_id=EVD-dry-graph.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "reconciliation_agent"
+      ],
+      "tools_called": [
+        "graph_neighborhood"
+      ]
+    },
+    {
+      "case_id": "governance-flag",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "Do not write off without approval. Policy requires human review; needs_review with evidence trail. evidence_id=EVD-dry-gov.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "search_policies",
+        "flag_for_human_review"
+      ]
+    }
+  ],
+  "trajectories": {
+    "aging-acme": {
+      "final_text": "Acme CUST-ACME open AR: INV-1001 ($12,500, 1-30) and INV-1002 ($4,200, 31-60). evidence_id=EVD-dry-aging.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "invoice_agent"
+      ],
+      "tools_called": [
+        "aging_summary"
+      ]
+    },
+    "unmatched-payment": {
+      "final_text": "PAY-9002 is unmatched; references PO-8891. Best candidate INV-1002. needs_review=true. evidence_id=EVD-dry-pay.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "payments_agent"
+      ],
+      "tools_called": [
+        "list_unmatched_payments",
+        "suggest_payment_match"
+      ]
+    },
+    "contract-terms": {
+      "final_text": "Northwind CTR-3100 payment terms are Net 45. Collections contact required after 60 days. evidence_id=EVD-dry-ctr.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "contracts_agent"
+      ],
+      "tools_called": [
+        "lookup_customer_contract"
+      ]
+    },
+    "graph-walk": {
+      "final_text": "PAY-9002 links to CUST-ACME via PO-8891 and open invoices. evidence_id=EVD-dry-graph.",
+      "agents_seen": [
+        "finance_ops_coordinator",
+        "reconciliation_agent"
+      ],
+      "tools_called": [
+        "graph_neighborhood"
+      ]
+    },
+    "governance-flag": {
+      "final_text": "Do not write off without approval. Policy requires human review; needs_review with evidence trail. evidence_id=EVD-dry-gov.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "search_policies",
+        "flag_for_human_review"
+      ]
+    }
+  }
+}
