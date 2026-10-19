@@ -78,10 +78,16 @@ See [runtime-gaps.md](runtime-gaps.md):
 - Typed A2A Pydantic handoffs
 - GitHub Actions CI (pytest + L2 dry-run)
 
+## Shipped increments
+
+- **L7** CFO/CTO one-pager — [cfo-cto-one-pager.md](cfo-cto-one-pager.md)
+- **L3** BigQuery mode in repository + adapter fallback — [bigquery-l3.md](bigquery-l3.md)
+- **#8 Slack HITL** notify + link-button resume — [hitl-slack.md](hitl-slack.md)
+- Durable DAG **signal()** for Temporal-shaped HITL resume hooks
+
 ## Next build increments
 
-1. Wire `google-cloud-bigquery` behind invoice/payment tools (L3).
-2. Replace keyword RAG with Vertex embeddings + Vector Search (L4).
-3. Persist knowledge graph (Neo4j / Spanner Graph) (L5).
-4. Terraform + Cloud Run / Agent Runtime deploy skeleton (L6).
-5. Sample CFO/CTO one-pager from eval + architecture notes (L7).
+1. Replace keyword RAG with Vertex embeddings + Vector Search (L4).
+2. Persist knowledge graph (Neo4j / Spanner Graph) (L5).
+3. Terraform + Cloud Run / Agent Runtime deploy (L6 — skeleton exists).
+4. Live Slack app (signing secret + interactive value buttons) in a shared workspace.

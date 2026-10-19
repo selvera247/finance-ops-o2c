@@ -1,10 +1,62 @@
 from __future__ import annotations
 
-"""BigQuery adapter. Falls back to DuckDB warehouse if BQ client/project unavailable."""
+"""BigQuery adapter (L3). Falls back to DuckDB when client/project unavailable."""
 
 from typing import Any
 
 from data_plane.config import bigquery_dataset, gcp_project
+
+
+def bq_available() -> bool:
+    """True when google-cloud-bigquery imports and GOOGLE_CLOUD_PROJECT is set."""
+    if not gcp_project():
+        return False
+    try:
+        from google.cloud import bigquery  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def bq_ping() -> dict[str, Any]:
+    """Lightweight connectivity probe for status tools / CI without credentials."""
+    project = gcp_project()
+    dataset = bigquery_dataset()
+    if not project:
+        return {
+            "ok": False,
+            "mode": "fallback_duckdb",
+            "reason": "GOOGLE_CLOUD_PROJECT unset",
+            "dataset": dataset,
+        }
+    try:
+        from google.cloud import bigquery
+    except ImportError:
+        return {
+            "ok": False,
+            "mode": "fallback_duckdb",
+            "reason": "google-cloud-bigquery not installed",
+            "project": project,
+            "dataset": dataset,
+        }
+    try:
+        client = bigquery.Client(project=project)
+        # Cheap metadata call — fails fast without valid ADC
+        list(client.list_datasets(max_results=1))
+        return {
+            "ok": True,
+            "mode": "bigquery",
+            "project": project,
+            "dataset": dataset,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "mode": "fallback_duckdb",
+            "reason": str(exc),
+            "project": project,
+            "dataset": dataset,
+        }
 
 
 def _client():
@@ -24,35 +76,28 @@ def bq_list_invoices(
     try:
         client, project = _client()
         dataset = bigquery_dataset()
+        from google.cloud import bigquery
+
         sql = f"SELECT * FROM `{project}.{dataset}.invoices` WHERE 1=1"
         params = []
         if customer_id:
             sql += " AND customer_id = @customer_id"
-            params.append(
-                __import__("google.cloud.bigquery", fromlist=["bigquery"]).ScalarQueryParameter(
-                    "customer_id", "STRING", customer_id
-                )
-            )
+            params.append(bigquery.ScalarQueryParameter("customer_id", "STRING", customer_id))
         if open_only:
             sql += " AND status IN ('open', 'past_due')"
-        job_config = None
-        if params:
-            from google.cloud import bigquery
-
-            job_config = bigquery.QueryJobConfig(query_parameters=params)
+        job_config = bigquery.QueryJobConfig(query_parameters=params) if params else None
         return [dict(row) for row in client.query(sql, job_config=job_config)]
     except Exception:
-        # Safe fallback for portfolio demos without live BQ
         from data_plane.warehouse import db
 
         sql = "SELECT * FROM invoices WHERE 1=1"
-        params: list[Any] = []
+        params_list: list[Any] = []
         if customer_id:
             sql += " AND customer_id = ?"
-            params.append(customer_id)
+            params_list.append(customer_id)
         if open_only:
             sql += " AND status IN ('open', 'past_due')"
-        return db.query_dicts(sql, params)
+        return db.query_dicts(sql, params_list)
 
 
 def bq_list_payments(
@@ -61,11 +106,11 @@ def bq_list_payments(
     try:
         client, project = _client()
         dataset = bigquery_dataset()
+        from google.cloud import bigquery
+
         sql = f"SELECT * FROM `{project}.{dataset}.payments` WHERE 1=1"
         job_config = None
         if customer_id:
-            from google.cloud import bigquery
-
             sql += " AND customer_id = @customer_id"
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
@@ -79,13 +124,13 @@ def bq_list_payments(
         from data_plane.warehouse import db
 
         sql = "SELECT * FROM payments WHERE 1=1"
-        params: list[Any] = []
+        params_list: list[Any] = []
         if customer_id:
             sql += " AND customer_id = ?"
-            params.append(customer_id)
+            params_list.append(customer_id)
         if unmatched_only:
             sql += " AND status IN ('unmatched', 'partial')"
-        return db.query_dicts(sql, params)
+        return db.query_dicts(sql, params_list)
 
 
 def bq_list_contracts(
@@ -94,11 +139,11 @@ def bq_list_contracts(
     try:
         client, project = _client()
         dataset = bigquery_dataset()
+        from google.cloud import bigquery
+
         sql = f"SELECT * FROM `{project}.{dataset}.contracts` WHERE 1=1"
         job_config = None
         if customer_id:
-            from google.cloud import bigquery
-
             sql += " AND customer_id = @customer_id"
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
@@ -112,10 +157,26 @@ def bq_list_contracts(
         from data_plane.warehouse import db
 
         sql = "SELECT * FROM contracts WHERE 1=1"
-        params: list[Any] = []
+        params_list: list[Any] = []
         if customer_id:
             sql += " AND customer_id = ?"
-            params.append(customer_id)
+            params_list.append(customer_id)
         if active_only:
             sql += " AND status = 'active'"
-        return db.query_dicts(sql, params)
+        return db.query_dicts(sql, params_list)
+
+
+def bq_get_invoice(invoice_id: str) -> dict[str, Any] | None:
+    rows = bq_list_invoices()
+    for row in rows:
+        if str(row.get("invoice_id", "")).upper() == invoice_id.upper():
+            return row
+    return None
+
+
+def bq_get_payment(payment_id: str) -> dict[str, Any] | None:
+    rows = bq_list_payments()
+    for row in rows:
+        if str(row.get("payment_id", "")).upper() == payment_id.upper():
+            return row
+    return None

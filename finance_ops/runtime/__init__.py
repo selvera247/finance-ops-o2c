@@ -5,6 +5,7 @@ from finance_ops.runtime.circuit_breaker import CircuitBreaker, CircuitOpenError
 from finance_ops.runtime.durable import DurableWorkflow
 from finance_ops.runtime.fallback_router import resolve_portal_data
 from finance_ops.runtime.hitl import ApprovalStore, PendingApproval
+from finance_ops.runtime.slack_hitl import notify_slack
 
 __all__ = [
     "CircuitBreaker",
@@ -16,4 +17,5 @@ __all__ = [
     "AgentTask",
     "AgentResult",
     "SwarmState",
+    "notify_slack",
 ]

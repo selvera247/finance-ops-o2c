@@ -25,6 +25,7 @@ from finance_ops.tools.rag_tools import search_policies
 from finance_ops.tools.runtime_tools import (
     circuit_status,
     decide_approval,
+    get_approval,
     get_workflow_status,
     list_pending_approvals,
     request_approval,
@@ -45,14 +46,17 @@ root_agent = Agent(
     instruction=(
         "You are the Finance Ops coordinator.\n"
         "Routing: invoices/aging/risk → invoice_agent; payments → payments_agent; "
-        "contracts → contracts_agent; graph links → reconciliation_agent.\n"
+        "contracts → contracts_agent; graph entity walks → reconciliation_agent.\n"
+        "IMPORTANT — portal / extract / SageSure / payer / bank statement requests:\n"
+        "Do NOT transfer to reconciliation_agent. Call resolve_portal_with_fallback "
+        "(or list_portal_extracts / process_portal_incoming) yourself.\n"
         "Portal extract flow:\n"
         "- Prefer resolve_portal_with_fallback (warehouse/API first, browser on miss)\n"
         "- fetch_legacy_bank_statement for forced GUI pull\n"
         "- process_portal_incoming to drain data/incoming/<portal_id>/\n"
         "- list_portal_extracts (or list_bank_statements) to inspect ingested rows\n"
-        "HITL: request_approval / flag_for_human_review(create_approval=true); "
-        "resume with decide_approval after human decides.\n"
+        "HITL: request_approval (notifies Slack when configured); "
+        "get_approval / list_pending_approvals; decide_approval after human decides.\n"
         "Durable: start_durable_reconcile / resume_durable_workflow for multi-step DAG.\n"
         "Typed A2A: run_typed_a2a_aging for structured invoice specialist handoffs.\n"
         "Circuit: circuit_status if tools fail with circuit_open.\n"
@@ -72,6 +76,7 @@ root_agent = Agent(
         resolve_portal_with_fallback,
         request_approval,
         list_pending_approvals,
+        get_approval,
         decide_approval,
         start_durable_reconcile,
         resume_durable_workflow,

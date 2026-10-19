@@ -133,6 +133,16 @@ class DurableWorkflow:
         state = self.load(run_id)
         return self.run(handlers, state=state, **kwargs)
 
+    def signal(self, run_id: str, name: str, payload: dict[str, Any] | None = None) -> WorkflowState:
+        """Temporal-shaped external signal (e.g. HITL approved) persisted on meta."""
+        state = self.load(run_id)
+        signals = list(state.meta.get("signals") or [])
+        signals.append({"name": name, "payload": payload or {}, "at": _now()})
+        state.meta["signals"] = signals
+        state.meta[f"signal_{name}"] = payload or {"ok": True}
+        self.save(state)
+        return state
+
 
 def portal_reconcile_handlers() -> dict[str, StepFn]:
     """Default DAG: ensure warehouse → process incoming → fallback resolve → smoke match."""
