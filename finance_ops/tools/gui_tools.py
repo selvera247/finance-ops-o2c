@@ -5,6 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from finance_ops.lib.evidence import record_evidence
+from finance_ops.runtime.circuit_breaker import DEFAULT_BREAKER, CircuitOpenError
+
+
+def _tool(name: str) -> None:
+    DEFAULT_BREAKER.record_tool(name)
 
 
 def fetch_legacy_bank_statement() -> dict[str, Any]:
@@ -15,6 +20,11 @@ def fetch_legacy_bank_statement() -> dict[str, Any]:
         process_incoming,
         stage_file_to_incoming,
     )
+
+    try:
+        _tool("fetch_legacy_bank_statement")
+    except CircuitOpenError as exc:
+        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
 
     gui = download_bank_statement()
     if gui.get("status") != "success" or not gui.get("downloaded_file"):
@@ -59,6 +69,11 @@ def process_portal_incoming(portal_id: str | None = None) -> dict[str, Any]:
     """Ingest any CSVs waiting in data/incoming/<portal_id>/ (drop-zone watcher)."""
     from gui_connectors.ingest.portal_ingest import process_incoming
 
+    try:
+        _tool("process_portal_incoming")
+    except CircuitOpenError as exc:
+        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
+
     watcher = process_incoming(portal_id)
     result = {**watcher, "needs_review": watcher.get("status") != "success"}
     result["evidence"] = record_evidence(
@@ -78,6 +93,11 @@ def list_portal_extracts(
 ) -> dict[str, Any]:
     """List rows from the canonical portal_extracts table."""
     from data_plane import repository as repo
+
+    try:
+        _tool("list_portal_extracts")
+    except CircuitOpenError as exc:
+        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
 
     rows = repo.portal_extracts(
         portal_id=portal_id, extract_type=extract_type, entity_id=entity_id
