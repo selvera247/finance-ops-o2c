@@ -4,7 +4,8 @@ End-to-end **Data → AI** finance ops demo:
 
 - ADK coordinator + invoice / payments / contracts / reconciliation agents
 - DuckDB warehouse, streaming simulator, features, vector RAG, evidence
-- **NEW:** Playwright GUI connector for a mock legacy bank portal (no API)
+- Playwright GUI connector for a mock legacy bank portal (no API)
+- Runtime: fallback router, circuit breaker, HITL stub, durable DAG, typed A2A
 
 ## Quick start
 
@@ -21,7 +22,10 @@ cp .env.example finance_ops/.env
 PYTHONPATH=. python scripts/run_e2e_data_to_ai.py
 PYTHONPATH=. python scripts/run_gui_connector.py
 PYTHONPATH=. python scripts/process_incoming.py   # SageSure + payer sample CSVs
+PYTHONPATH=. python scripts/run_durable_workflow.py --no-browser
+PYTHONPATH=. python -m finance_ops.runtime.hitl_server   # HITL stub :8787
 PYTHONPATH=. pytest -q
+PYTHONPATH=. python evals/run_trajectory_eval.py --dry-run
 
 adk web --port 8000
 ```
@@ -29,20 +33,25 @@ adk web --port 8000
 ## Layout
 
 ```text
-finance_ops/          ADK agents + tools
+finance_ops/          ADK agents + tools + runtime/
 data_plane/           warehouse, features, vectors, repository
 pipelines/            batch + stream
 gui_connectors/       mock portal + Playwright + CSV ingest
-scripts/              e2e + gui runners
-docs/                 architecture notes
+scripts/              e2e + gui + durable runners
+docs/                 architecture + runtime-gaps notes
+.github/workflows/    CI gate (pytest + trajectory dry-run)
 ```
 
 ## Portal extract prompts (after GUI / process_incoming)
 
 ```text
 List portal extracts for portal_id=sagesure and cite evidence_id.
-List portal extracts for payer_availity with claim statuses.
-List bank statements for ACC-1001 and cite evidence_id.
+Resolve portal data for legacy_bank with fallback and cite path.
+Request approval for write-off amount 125 summary small balance.
+Run typed A2A aging for CUST-ACME.
+Start durable reconcile without browser.
 ```
 
 Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.
+
+See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/#8/#1/#5/#12).

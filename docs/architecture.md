@@ -67,6 +67,17 @@ L2 scores each `evals/cases.yaml` case on mentions, `evidence_id`,
 `needs_review`, and preferred specialist author. Reports land in
 `evals/results/latest.md`.
 
+## Runtime primitives (closed gaps)
+
+See [runtime-gaps.md](runtime-gaps.md):
+
+- Fallback router (warehouse/API → Playwright)
+- Circuit breaker (max tool calls / depth)
+- HITL approval store + local HTTP stub
+- Durable file-checkpoint DAG
+- Typed A2A Pydantic handoffs
+- GitHub Actions CI (pytest + L2 dry-run)
+
 ## Next build increments
 
 1. Wire `google-cloud-bigquery` behind invoice/payment tools (L3).
