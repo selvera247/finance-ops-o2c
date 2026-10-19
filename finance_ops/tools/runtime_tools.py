@@ -73,9 +73,12 @@ def request_approval(
     summary: str,
     related_ids: str = "",
     wait_days: float = 3.0,
+    notify_slack: bool = True,
 ) -> dict[str, Any]:
-    """#8 Serialize a pending HITL approval (Slack/webhook resume stub)."""
+    """#8 Serialize a pending HITL approval and optionally notify Slack."""
     _guard("request_approval")
+    from finance_ops.runtime.slack_hitl import approval_links, notify_slack as slack_notify
+
     payload = {
         "related_ids": [x.strip() for x in related_ids.split(",") if x.strip()],
     }
@@ -86,12 +89,16 @@ def request_approval(
         payload=payload,
         wait_days=float(wait_days),
     )
+    links = approval_links(approval)
+    slack = slack_notify(approval) if notify_slack else {"sent": False, "skipped": True}
     result = {
         "status": "pending",
         "approval": approval.model_dump(),
+        "links": links,
+        "slack": slack,
         "resume_hint": (
-            f"Approve via HITL stub: python -m finance_ops.runtime.hitl_server "
-            f"then open /approve?id={approval.approval_id}&token={approval.resume_token}"
+            f"Slack button or open {links['approve']} "
+            f"(HITL server: python -m finance_ops.runtime.hitl_server)"
         ),
         "needs_review": True,
     }
@@ -99,8 +106,12 @@ def request_approval(
         agent="coordinator",
         action="request_approval",
         inputs={"kind": kind, "amount": amount, "summary": summary},
-        outputs={"approval_id": approval.approval_id, "status": "pending"},
-        sources=["hitl:approval_store"],
+        outputs={
+            "approval_id": approval.approval_id,
+            "status": "pending",
+            "slack_sent": slack.get("sent"),
+        },
+        sources=["hitl:approval_store", "slack:hitl"],
     )
     return result
 
@@ -114,6 +125,19 @@ def list_pending_approvals() -> dict[str, Any]:
         "count": len(rows),
         "approvals": rows,
         "needs_review": len(rows) > 0,
+    }
+
+
+def get_approval(approval_id: str) -> dict[str, Any]:
+    """Fetch one approval by id (any status) — confirm Slack/web resume."""
+    _guard("get_approval")
+    item = DEFAULT_STORE.get(approval_id.strip())
+    if item is None:
+        return {"status": "not_found", "approval_id": approval_id, "needs_review": True}
+    return {
+        "status": "success",
+        "approval": item.model_dump(),
+        "needs_review": item.status == "pending",
     }
 
 

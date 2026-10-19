@@ -21,6 +21,10 @@ def list_invoices(*, customer_id: str | None = None, open_only: bool = False) ->
         if open_only:
             rows = [r for r in rows if r["status"] in {"open", "past_due"}]
         return rows
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_list_invoices
+
+        return bq_list_invoices(customer_id=customer_id, open_only=open_only)
     from data_plane.warehouse import db
 
     sql, params = "SELECT * FROM invoices WHERE 1=1", []
@@ -46,6 +50,10 @@ def list_payments(*, customer_id: str | None = None, unmatched_only: bool = Fals
         if unmatched_only:
             rows = [r for r in rows if r["status"] in {"unmatched", "partial"}]
         return rows
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_list_payments
+
+        return bq_list_payments(customer_id=customer_id, unmatched_only=unmatched_only)
     from data_plane.warehouse import db
 
     sql, params = "SELECT * FROM payments WHERE 1=1", []
@@ -71,6 +79,10 @@ def list_contracts(*, customer_id: str | None = None, active_only: bool = True) 
         if active_only:
             rows = [r for r in rows if r["status"] == "active"]
         return rows
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_list_contracts
+
+        return bq_list_contracts(customer_id=customer_id, active_only=active_only)
     from data_plane.warehouse import db
 
     sql, params = "SELECT * FROM contracts WHERE 1=1", []
@@ -150,8 +162,12 @@ def portal_extracts(
 
 
 def source_label() -> str:
-    if data_mode() == "warehouse" and _warehouse_ready():
+    mode = data_mode()
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_ping
+
+        ping = bq_ping()
+        return "bigquery" if ping.get("ok") else "bigquery:fallback_duckdb"
+    if mode == "warehouse" and _warehouse_ready():
         return "warehouse:duckdb"
-    if data_mode() == "bigquery":
-        return "bigquery"
     return "fixture:json"

@@ -1,11 +1,11 @@
-"""Local HITL stub — approve/reject pending approvals over HTTP (Slack stand-in)."""
+"""HITL gate — local UI + API + Slack interactive resume (#8)."""
 
 from __future__ import annotations
 
 import argparse
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote_plus, urlparse
 
 from finance_ops.runtime.hitl import DEFAULT_STORE
 
@@ -13,8 +13,8 @@ from finance_ops.runtime.hitl import DEFAULT_STORE
 HTML = """<!doctype html>
 <html><head><title>HITL Approvals</title></head>
 <body style="font-family:sans-serif;max-width:800px;margin:2rem auto">
-<h1>HITL Approval Gate (local stub)</h1>
-<p>Stand-in for Slack/Teams approve buttons.</p>
+<h1>HITL Approval Gate</h1>
+<p>Local UI + Slack link-button target (Slack/Teams stand-in).</p>
 {body}
 </body></html>
 """
@@ -50,23 +50,76 @@ class Handler(BaseHTTPRequestHandler):
             approval_id = (qs.get("id") or [""])[0]
             token = (qs.get("token") or [""])[0]
             decision = "approved" if parsed.path == "/approve" else "rejected"
+            actor = (qs.get("actor") or ["hitl_web"])[0]
             try:
                 item = DEFAULT_STORE.decide(
-                    approval_id, decision=decision, actor="hitl_web", resume_token=token
+                    approval_id, decision=decision, actor=actor, resume_token=token
                 )
-                self._html(HTML.format(body=f"<p>{decision}: {item.approval_id}</p><p><a href='/'>Back</a></p>"))
+                self._html(
+                    HTML.format(
+                        body=(
+                            f"<p>{decision}: {item.approval_id}</p>"
+                            f"<p>decided_by={item.decided_by}</p>"
+                            f"<p><a href='/'>Back</a></p>"
+                        )
+                    )
+                )
             except Exception as exc:  # noqa: BLE001
                 self._html(HTML.format(body=f"<p>Error: {exc}</p>"), code=400)
             return
+        if parsed.path.startswith("/api/approval/"):
+            approval_id = parsed.path.rsplit("/", 1)[-1]
+            item = DEFAULT_STORE.get(approval_id)
+            if item is None:
+                self._json({"error": "not_found"}, code=404)
+                return
+            self._json(item.model_dump())
+            return
         if parsed.path == "/health":
-            self._json({"status": "ok"})
+            self._json({"status": "ok", "slack": True})
             return
         self.send_error(404)
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(length) if length else b"{}"
+        raw = self.rfile.read(length) if length else b""
+
+        # Slack interactive / slash: application/x-www-form-urlencoded payload=...
+        if parsed.path in {"/slack/interactions", "/slack/commands"}:
+            form = parse_qs(raw.decode("utf-8"))
+            if "payload" in form:
+                payload_raw = unquote_plus(form["payload"][0])
+                from finance_ops.runtime.slack_hitl import parse_slack_interaction_payload
+
+                parsed_action = parse_slack_interaction_payload(payload_raw)
+                # Link buttons open /approve|/reject in browser — interactions
+                # with value=approval_id:token:decision are also supported.
+                value = ((json.loads(payload_raw).get("actions") or [{}])[0]).get("value") or ""
+                if ":" in value:
+                    approval_id, token, decision = (value.split(":", 2) + ["", "", ""])[:3]
+                    try:
+                        item = DEFAULT_STORE.decide(
+                            approval_id,
+                            decision=decision,  # type: ignore[arg-type]
+                            actor=f"slack:{parsed_action.get('user') or 'user'}",
+                            resume_token=token,
+                        )
+                        self._json({"ok": True, "approval": item.model_dump()})
+                    except Exception as exc:  # noqa: BLE001
+                        self._json({"ok": False, "error": str(exc)}, code=400)
+                    return
+                self._json(
+                    {
+                        "ok": True,
+                        "hint": "Use link buttons (open Approve URL) or value=id:token:decision",
+                        "parsed": parsed_action,
+                    }
+                )
+                return
+            self._json({"ok": True, "hint": "no payload"})
+            return
+
         try:
             body = json.loads(raw.decode("utf-8") or "{}")
         except json.JSONDecodeError:
@@ -83,6 +136,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(item.model_dump())
             except Exception as exc:  # noqa: BLE001
                 self._json({"error": str(exc)}, code=400)
+            return
+        if parsed.path == "/api/notify":
+            # Re-notify Slack for an existing approval
+            from finance_ops.runtime.slack_hitl import notify_slack
+
+            item = DEFAULT_STORE.get(body.get("approval_id", ""))
+            if item is None:
+                self._json({"error": "not_found"}, code=404)
+                return
+            self._json(notify_slack(item))
             return
         self.send_error(404)
 
@@ -109,7 +172,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"HITL stub at http://{args.host}:{args.port}/")
+    print(f"HITL gate at http://{args.host}:{args.port}/")
+    print("  Slack interactions: POST /slack/interactions")
     httpd.serve_forever()
 
 

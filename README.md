@@ -55,3 +55,9 @@ Start durable reconcile without browser.
 Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.
 
 See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/#8/#1/#5/#12).
+
+## Portfolio / next layer
+
+- **L7 narrative:** [docs/cfo-cto-one-pager.md](docs/cfo-cto-one-pager.md)
+- **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/load_bigquery_demo.py --dry-run`
+- **HITL → Slack:** [docs/hitl-slack.md](docs/hitl-slack.md)

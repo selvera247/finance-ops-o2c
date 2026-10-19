@@ -32,6 +32,9 @@ resource "google_bigquery_dataset" "finance_ops" {
   location   = var.region
 }
 
+# Table DDL is applied via data_plane/warehouse/bq_schema.sql (bq CLI) after dataset create.
+# Keeping schema in SQL avoids Terraform drift on demo column tweaks.
+
 resource "google_pubsub_topic" "finance_events" {
   name = "finance-ops-events"
 }
