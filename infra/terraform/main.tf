@@ -29,14 +29,34 @@ variable "service_name" {
 
 variable "image" {
   type        = string
-  description = "Container image in Artifact Registry, e.g. REGION-docker.pkg.dev/PROJECT/finance-agents/finance-ops:latest"
+  description = "Container image in Artifact Registry"
   default     = ""
 }
 
 variable "invoker_members" {
   type        = list(string)
-  description = "Who can invoke Cloud Run (use allUsers only for public demos)"
+  description = "Who can invoke Cloud Run (allUsers for public demos)"
   default     = []
+}
+
+variable "use_vertex_vectors" {
+  type    = bool
+  default = false
+}
+
+variable "graph_backend" {
+  type    = string
+  default = "sqlite"
+}
+
+variable "vector_index_endpoint" {
+  type    = string
+  default = ""
+}
+
+variable "vector_deployed_index_id" {
+  type    = string
+  default = "finance_ops_policies"
 }
 
 provider "google" {
@@ -48,8 +68,6 @@ resource "google_bigquery_dataset" "finance_ops" {
   dataset_id = var.dataset_id
   location   = var.region
 }
-
-# Table DDL is applied via data_plane/warehouse/bq_schema.sql (bq CLI) after dataset create.
 
 resource "google_pubsub_topic" "finance_events" {
   name = "finance-ops-events"
@@ -89,6 +107,25 @@ resource "google_project_iam_member" "run_aiplatform" {
   member  = "serviceAccount:${google_service_account.finance_ops.email}"
 }
 
+resource "google_project_iam_member" "run_storage" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "serviceAccount:${google_service_account.finance_ops.email}"
+}
+
+resource "google_storage_bucket" "vector_embeddings" {
+  name                        = "${var.project_id}-finance-ops-embeddings"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = true
+}
+
+resource "google_storage_bucket_iam_member" "runtime_embeddings" {
+  bucket = google_storage_bucket.vector_embeddings.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.finance_ops.email}"
+}
+
 resource "google_cloud_run_v2_service" "finance_ops" {
   count    = var.image == "" ? 0 : 1
   name     = var.service_name
@@ -116,11 +153,23 @@ resource "google_cloud_run_v2_service" "finance_ops" {
       }
       env {
         name  = "FINANCE_OPS_USE_VERTEX_VECTORS"
-        value = "false"
+        value = var.use_vertex_vectors ? "true" : "false"
       }
       env {
         name  = "FINANCE_OPS_GRAPH_BACKEND"
-        value = "duckdb"
+        value = var.graph_backend
+      }
+      env {
+        name  = "FINANCE_OPS_VECTOR_INDEX_ENDPOINT"
+        value = var.vector_index_endpoint
+      }
+      env {
+        name  = "FINANCE_OPS_VECTOR_DEPLOYED_INDEX_ID"
+        value = var.vector_deployed_index_id
+      }
+      env {
+        name  = "FINANCE_OPS_EMBEDDINGS_BUCKET"
+        value = google_storage_bucket.vector_embeddings.name
       }
       resources {
         limits = {
@@ -143,14 +192,6 @@ resource "google_cloud_run_v2_service_iam_member" "invokers" {
   location = var.region
   role     = "roles/run.invoker"
   member   = each.value
-}
-
-# L4 Vector Search — bucket for index embeddings export
-resource "google_storage_bucket" "vector_embeddings" {
-  name                        = "${var.project_id}-finance-ops-embeddings"
-  location                    = var.region
-  uniform_bucket_level_access = true
-  force_destroy               = true
 }
 
 output "dataset_id" {

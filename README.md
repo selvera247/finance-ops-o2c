@@ -63,10 +63,13 @@ See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/
 - **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/smoke_master_layer.py`
 - **HITL → Slack:** [docs/hitl-slack.md](docs/hitl-slack.md)
 
-## Cloud ladder L4–L6 (complete)
+## Cloud ladder L4–L6 (complete + live)
 
+- **Status:** [docs/master-plan-status.md](docs/master-plan-status.md)
+- **Live API:** https://finance-ops-301858971164.us-central1.run.app/health · [/docs](https://finance-ops-301858971164.us-central1.run.app/docs)
 - **Overview:** [docs/l4-l5-l6-complete.md](docs/l4-l5-l6-complete.md)
 - **L4 Vector Search:** [docs/l4-vector-search.md](docs/l4-vector-search.md)
 - **L5 Knowledge graph:** [docs/l5-knowledge-graph.md](docs/l5-knowledge-graph.md)
-- **L6 Cloud Run:** [docs/l6-cloud-run.md](docs/l6-cloud-run.md) · `Dockerfile` · `scripts/deploy_cloud_run.sh`
+- **L6 Cloud Run:** [docs/l6-cloud-run.md](docs/l6-cloud-run.md) · `Dockerfile`
+- **GCP go-live:** [docs/gcp-go-live.md](docs/gcp-go-live.md)
 - Smoke: `PYTHONPATH=. python scripts/smoke_l4_l5_l6.py`

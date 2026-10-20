@@ -1,12 +1,13 @@
 # Master layer complete — L7 · L3 · #8 Slack HITL
 
-Use this as the **done checklist**. All three items are implemented in-repo.
+All three items are implemented and validated. Cloud ladder L4–L6 is also complete
+(see [l4-l5-l6-complete.md](l4-l5-l6-complete.md) and [master-plan-status.md](master-plan-status.md)).
 
 | Item | Meaning | Proof |
 | --- | --- | --- |
 | **L7** | CFO/CTO one-pager | `docs/cfo-cto-one-pager.md` |
 | **L3** | BigQuery behind invoice/payment tools | `FINANCE_OPS_DATA_MODE=bigquery` → `bq_adapter` (DuckDB fallback) |
-| **#8** | Slack Approve/Reject | `SLACK_WEBHOOK_URL` → card in channel → HITL server |
+| **#8** | Slack Approve/Reject | `SLACK_WEBHOOK_URL` → card in `#all-demo` → HITL server |
 
 ## Your Windows verify (10 minutes)
 
@@ -45,4 +46,4 @@ HITL_PUBLIC_BASE_URL=http://127.0.0.1:8787
 
 ## Status
 
-**Complete for portfolio / interview.** Remaining roadmap is L4–L6 cloud depth, not these three.
+**Complete.** Full master-plan scorecard (including live Cloud Run): [master-plan-status.md](master-plan-status.md).
