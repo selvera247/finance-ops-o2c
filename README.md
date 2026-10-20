@@ -69,4 +69,5 @@ See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/
 - **L4 Vector Search:** [docs/l4-vector-search.md](docs/l4-vector-search.md)
 - **L5 Knowledge graph:** [docs/l5-knowledge-graph.md](docs/l5-knowledge-graph.md)
 - **L6 Cloud Run:** [docs/l6-cloud-run.md](docs/l6-cloud-run.md) · `Dockerfile` · `scripts/deploy_cloud_run.sh`
+- **GCP go-live:** [docs/gcp-go-live.md](docs/gcp-go-live.md) · `bash scripts/go_live_gcp.sh`
 - Smoke: `PYTHONPATH=. python scripts/smoke_l4_l5_l6.py`
