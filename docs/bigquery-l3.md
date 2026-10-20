@@ -1,31 +1,42 @@
-# BigQuery L3 — invoice / payment tools
+# BigQuery L3 — complete
 
-Agent tools keep the same contracts. `data_plane.repository` switches on
-`FINANCE_OPS_DATA_MODE=bigquery` and calls `bq_adapter`, which **falls back to
-DuckDB** when ADC/project/client are missing (safe for demos).
+Same agent tools. `repository` uses BigQuery when
+`FINANCE_OPS_DATA_MODE=bigquery`; **`bq_adapter` falls back to DuckDB** if
+project/ADC/client are missing.
 
-## Enable
+## Env
 
-```bash
-# finance_ops/.env
+```env
 FINANCE_OPS_DATA_MODE=bigquery
 GOOGLE_CLOUD_PROJECT=your-gcp-project
 FINANCE_OPS_BQ_DATASET=finance_ops
-# ADC: gcloud auth application-default login
 ```
 
 ```bash
+gcloud auth application-default login
 pip install google-cloud-bigquery
-# Terraform dataset (optional)
-# cd infra/terraform && terraform apply -var=project_id=...
-# Apply DDL (replace PROJECT/DATASET)
-# bq query --use_legacy_sql=false < data_plane/warehouse/bq_schema.sql
+```
 
+## Load path
+
+```bash
+# Plan only (no credentials required)
 PYTHONPATH=. python scripts/load_bigquery_demo.py --dry-run
+PYTHONPATH=. python scripts/load_bigquery_demo.py --print-ddl
+
+# Live (needs project + tables)
+# terraform apply in infra/terraform  OR create dataset manually
+# Apply DDL from --print-ddl via bq query
 PYTHONPATH=. python scripts/load_bigquery_demo.py
 ```
 
-## Verify
+## Verify without GCP
 
-In ADK: `bigquery_status` → `bigquery.ok=true`, `active_source=bigquery`.  
-Invoice/payment tools then read BQ; without credentials they still answer from DuckDB and set `needs_review` on status.
+```bash
+PYTHONPATH=. python scripts/smoke_master_layer.py
+# Expect l3_bigquery_fallback.ok = true (duckdb_fallback + aging 16700)
+```
+
+In ADK with mode=bigquery and no project: `bigquery_status` →
+`active_source=duckdb_fallback`, `needs_review=true`. With live BQ:
+`active_source=bigquery`, `bigquery.ok=true`.

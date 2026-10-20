@@ -78,12 +78,15 @@ See [runtime-gaps.md](runtime-gaps.md):
 - Typed A2A Pydantic handoffs
 - GitHub Actions CI (pytest + L2 dry-run)
 
-## Shipped increments
+## Shipped increments (master layer complete)
+
+See [master-layer-complete.md](master-layer-complete.md).
 
 - **L7** CFO/CTO one-pager — [cfo-cto-one-pager.md](cfo-cto-one-pager.md)
 - **L3** BigQuery mode in repository + adapter fallback — [bigquery-l3.md](bigquery-l3.md)
 - **#8 Slack HITL** notify + link-button resume — [hitl-slack.md](hitl-slack.md)
 - Durable DAG **signal()** for Temporal-shaped HITL resume hooks
+- Smoke: `scripts/smoke_master_layer.py`
 
 ## Next build increments
 

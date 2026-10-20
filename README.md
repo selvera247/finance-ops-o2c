@@ -56,8 +56,9 @@ Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.
 
 See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/#8/#1/#5/#12).
 
-## Portfolio / next layer
+## Portfolio master layer (complete)
 
+- **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)
 - **L7 narrative:** [docs/cfo-cto-one-pager.md](docs/cfo-cto-one-pager.md)
-- **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/load_bigquery_demo.py --dry-run`
+- **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/smoke_master_layer.py`
 - **HITL → Slack:** [docs/hitl-slack.md](docs/hitl-slack.md)
