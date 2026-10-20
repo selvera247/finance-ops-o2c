@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -21,6 +22,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+def _gcloud() -> str:
+    """Resolve gcloud on Windows (gcloud.cmd) and Unix."""
+    for name in ("gcloud.cmd", "gcloud"):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise FileNotFoundError(
+        "gcloud not found on PATH. Install Google Cloud SDK or run "
+        "API/bucket/Cloud Run steps from PowerShell, then set SKIP_GCLOUD=1."
+    )
+
+
+def _run_gcloud(args: list[str], **kwargs) -> subprocess.CompletedProcess:
+    return subprocess.run([_gcloud(), *args], **kwargs)
+
+
+def _check_gcloud(args: list[str], **kwargs) -> None:
+    subprocess.check_call([_gcloud(), *args], **kwargs)
 
 
 def main() -> int:
@@ -36,35 +57,26 @@ def main() -> int:
         "FINANCE_OPS_VECTOR_DEPLOYED_INDEX_ID", "finance_ops_policies"
     )
     service = os.environ.get("CLOUD_RUN_SERVICE", "finance-ops")
+    skip_gcloud = os.environ.get("SKIP_GCLOUD", "").strip() in {"1", "true", "yes"}
 
-    # Enable API
-    subprocess.check_call(
-        ["gcloud", "services", "enable", "aiplatform.googleapis.com", f"--project={project}"]
-    )
-    subprocess.check_call(
-        ["gcloud", "storage", "buckets", "create", f"gs://{bucket}", f"--location={region}", f"--project={project}"],
-        stderr=subprocess.DEVNULL,
-    ) if False else None
-    # bucket may already exist from terraform / prior runs
-    subprocess.run(
-        ["gcloud", "storage", "buckets", "describe", f"gs://{bucket}", f"--project={project}"],
-        check=False,
-    )
-    if subprocess.run(
-        ["gcloud", "storage", "buckets", "describe", f"gs://{bucket}", f"--project={project}"],
-        capture_output=True,
-    ).returncode != 0:
-        subprocess.check_call(
-            [
-                "gcloud",
-                "storage",
-                "buckets",
-                "create",
-                f"gs://{bucket}",
-                f"--location={region}",
-                f"--project={project}",
-            ]
+    if not skip_gcloud:
+        _check_gcloud(
+            ["services", "enable", "aiplatform.googleapis.com", f"--project={project}"]
         )
+        if _run_gcloud(
+            ["storage", "buckets", "describe", f"gs://{bucket}", f"--project={project}"],
+            capture_output=True,
+        ).returncode != 0:
+            _check_gcloud(
+                [
+                    "storage",
+                    "buckets",
+                    "create",
+                    f"gs://{bucket}",
+                    f"--location={region}",
+                    f"--project={project}",
+                ]
+            )
 
     from data_plane.vectors.embed import build_policy_index
     from pipelines.batch.ingest import ingest_batch
@@ -85,9 +97,12 @@ def main() -> int:
             )
 
     gcs_prefix = f"gs://{bucket}/vector-search/{int(time.time())}"
-    subprocess.check_call(
-        ["gcloud", "storage", "cp", str(local_jsonl), f"{gcs_prefix}/me_datapoints.jsonl"]
-    )
+    if skip_gcloud:
+        print(f"SKIP_GCLOUD=1 — upload manually:\n  gcloud storage cp {local_jsonl} {gcs_prefix}/me_datapoints.jsonl")
+    else:
+        _check_gcloud(
+            ["storage", "cp", str(local_jsonl), f"{gcs_prefix}/me_datapoints.jsonl"]
+        )
 
     try:
         from google.cloud import aiplatform
@@ -130,20 +145,26 @@ def main() -> int:
     )
     print("Deployed.")
 
-    # Update Cloud Run
-    subprocess.check_call(
-        [
-            "gcloud",
-            "run",
-            "services",
-            "update",
-            service,
-            f"--region={region}",
-            f"--project={project}",
-            f"--update-env-vars=FINANCE_OPS_USE_VERTEX_VECTORS=true,FINANCE_OPS_VECTOR_INDEX_ENDPOINT={endpoint.resource_name},FINANCE_OPS_VECTOR_DEPLOYED_INDEX_ID={deployed_id},GOOGLE_CLOUD_PROJECT={project}",
-            "--quiet",
-        ]
-    )
+    if skip_gcloud:
+        print(
+            "SKIP_GCLOUD=1 — set Cloud Run env manually:\n"
+            f"  FINANCE_OPS_USE_VERTEX_VECTORS=true\n"
+            f"  FINANCE_OPS_VECTOR_INDEX_ENDPOINT={endpoint.resource_name}\n"
+            f"  FINANCE_OPS_VECTOR_DEPLOYED_INDEX_ID={deployed_id}"
+        )
+    else:
+        _check_gcloud(
+            [
+                "run",
+                "services",
+                "update",
+                service,
+                f"--region={region}",
+                f"--project={project}",
+                f"--update-env-vars=FINANCE_OPS_USE_VERTEX_VECTORS=true,FINANCE_OPS_VECTOR_INDEX_ENDPOINT={endpoint.resource_name},FINANCE_OPS_VECTOR_DEPLOYED_INDEX_ID={deployed_id},GOOGLE_CLOUD_PROJECT={project}",
+                "--quiet",
+            ]
+        )
 
     out = {
         "index": index.resource_name,
