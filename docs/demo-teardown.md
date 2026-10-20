@@ -54,7 +54,29 @@ gcloud run services update $SERVICE `
 
 Optional: `POST /v1/bootstrap` to refill sqlite KG for demos without Spanner.
 
-## 4. Optional
+## 4. Agent Engine (idle cost)
 
-- Agent Engine: Console → Vertex AI → Agent Engine → delete if unused.
+Managed reasoning engine from `adk deploy agent_engine` (demo id was
+`4038238202861977600` — confirm before delete):
+
+```powershell
+$PROJECT = "gen-lang-client-0611250410"
+$REGION  = "us-central1"
+$ENGINE  = "4038238202861977600"   # list first if unsure
+
+# List
+curl -sS -H "Authorization: Bearer $(gcloud auth print-access-token)" `
+  "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${REGION}/reasoningEngines"
+
+# Delete
+curl -sS -X DELETE -H "Authorization: Bearer $(gcloud auth print-access-token)" `
+  "https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${REGION}/reasoningEngines/${ENGINE}"
+```
+
+Or Console → Vertex AI → Agent Engine → delete. Cloud Run HTTP API stays the live surface.
+Or: `bash scripts/delete_agent_engine.sh`
+
+## 5. Optional
+
 - GitHub PATs: never paste in chat; revoke at https://github.com/settings/tokens if exposed.
+- Delete merged remote branches: `git push origin --delete cursor/<merged-branch>`

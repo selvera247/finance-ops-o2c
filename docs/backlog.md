@@ -23,4 +23,12 @@
 
 ## Hygiene
 
-Merge leftover doc branches · bootstrap sqlite · delete unused Agent Engine · revoke PATs · one-pager refresh.
+| Item | Status |
+| --- | --- |
+| Revoke chat-exposed PATs | **You** (settings/tokens) |
+| Delete merged `cursor/*` remote branches | Optional cleanup (15+ safe-delete) |
+| Slack `.env` load before HITL notify | **This PR** (`slack_hitl._ensure_dotenv`) |
+| One-pager refresh | **This PR** |
+| Drop stale `cursor/backlog-a24d` | **This PR** (remote delete) |
+| Delete idle Agent Engine | GCP — see [demo-teardown.md](demo-teardown.md) § Agent Engine |
+| Bootstrap sqlite | Already live via `POST /v1/bootstrap` post-teardown |

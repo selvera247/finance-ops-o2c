@@ -38,6 +38,34 @@ def test_notify_slack_without_webhook(monkeypatch, tmp_path: Path) -> None:
     assert "approve" in result["links"]
 
 
+def test_notify_slack_loads_dotenv(monkeypatch, tmp_path: Path) -> None:
+    """CLI one-liners should pick SLACK_WEBHOOK_URL from finance_ops/.env."""
+    import finance_ops.runtime.slack_hitl as slack_mod
+
+    runtime = tmp_path / "finance_ops" / "runtime"
+    runtime.mkdir(parents=True)
+    (tmp_path / "finance_ops" / ".env").write_text(
+        "SLACK_WEBHOOK_URL=https://hooks.example.test/from-dotenv\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(slack_mod, "__file__", str(runtime / "slack_hitl.py"))
+    monkeypatch.setattr(slack_mod, "_DOTENV_LOADED", False)
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+
+    calls: list[str] = []
+
+    def fake_post(url, payload, headers=None):
+        calls.append(url)
+        return {"ok": True}
+
+    monkeypatch.setattr(slack_mod, "_post_json", fake_post)
+    store = ApprovalStore(root=tmp_path / "hitl")
+    appr = store.create(kind="write_off", amount=10.0, summary="x")
+    result = notify_slack(appr)
+    assert result["sent"] is True
+    assert calls == ["https://hooks.example.test/from-dotenv"]
+
+
 def test_notify_slack_webhook_mock(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/T")
     calls: list[dict] = []
