@@ -253,7 +253,8 @@ class GraphStore:
 
     def _spanner_load(self) -> dict[str, Any]:
         db = self._spanner_db()
-        with db.snapshot() as snapshot:
+        # multi_use: two queries share one snapshot (single-use snaps raise ValueError)
+        with db.snapshot(multi_use=True) as snapshot:
             nodes = [
                 {"id": r[0], "type": r[1], "label": r[2]}
                 for r in snapshot.execute_sql("SELECT id, type, label FROM kg_nodes")
