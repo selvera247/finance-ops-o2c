@@ -59,10 +59,12 @@ def main() -> int:
 
     from google.cloud import bigquery
 
-    client = bigquery.Client(project=project)
+    live_project = gcp_project()
+    assert live_project  # ping.ok implies project is set
+    client = bigquery.Client(project=live_project)
     for table_name, path in tables.items():
         rows = json.loads(path.read_text(encoding="utf-8"))
-        table_id = f"{project}.{dataset}.{table_name}"
+        table_id = f"{live_project}.{dataset}.{table_name}"
         errors = client.insert_rows_json(table_id, rows)
         print(f"{table_id}: inserted={len(rows)} errors={errors}")
         if errors:
