@@ -31,7 +31,7 @@ See also [data-to-ai-architecture.md](data-to-ai-architecture.md) for the full E
 | Semantic graph | `kg_nodes` / `kg_edges` in warehouse | Neo4j / Spanner Graph + sync jobs |
 | Vectors / RAG | local hash embeddings + cosine | Vertex AI Vector Search + embeddings |
 | Runtime | `adk run` / `adk web` | Cloud Run or Vertex Agent Runtime |
-| IaC | `infra/terraform` skeleton | apply to GCP project |
+| IaC / runtime | `infra/terraform` + **Cloud Run live** | https://finance-ops-301858971164.us-central1.run.app |
 
 ## Governance / AgentOps
 
@@ -88,17 +88,18 @@ See [master-layer-complete.md](master-layer-complete.md).
 - Durable DAG **signal()** for Temporal-shaped HITL resume hooks
 - Smoke: `scripts/smoke_master_layer.py`
 
-## Cloud ladder L4–L6 (shipped)
+## Cloud ladder L4–L6 (shipped + live)
 
-See [l4-l5-l6-complete.md](l4-l5-l6-complete.md).
+See [l4-l5-l6-complete.md](l4-l5-l6-complete.md) · [master-plan-status.md](master-plan-status.md).
 
-1. **L4** Vertex embeddings + Vector Search / ME simulator.
-2. **L5** GraphStore: duckdb · sqlite · neo4j.
-3. **L6** Cloud Run Dockerfile + Terraform + FastAPI serving.
+1. **L4** Vertex embeddings + Vector Search / ME simulator (live search after bootstrap).
+2. **L5** GraphStore: duckdb · sqlite · neo4j (bootstrap syncs KG on Cloud Run).
+3. **L6** Cloud Run live via GitHub continuous deploy + FastAPI serving.
 
-## Next build increments
+## Parking lot (optional)
 
-1. Live Matching Engine index deploy from embeddings bucket.
+1. Live Matching Engine index + `FINANCE_OPS_VECTOR_INDEX_ENDPOINT`.
 2. Managed Neo4j / Spanner Graph in GCP (compose path exists locally).
-3. ADK Agent Engine on the same Cloud Run image (HTTP API is live today).
-4. Slack interactive payloads with signing secret (link buttons work now).
+3. Enable BigQuery API + load demo tables in the live project.
+4. ADK Agent Engine on the same Cloud Run image.
+5. Slack interactive payloads with signing secret (link buttons work now).

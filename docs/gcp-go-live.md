@@ -1,26 +1,25 @@
 # L4 / L5 / L6 → live GCP
 
-One script turns the merged ladder into a running Cloud Run service.
+## Already live
 
-## Prerequisites
+| | |
+| --- | --- |
+| Service | https://finance-ops-301858971164.us-central1.run.app |
+| Project | `gen-lang-client-0611250410` |
+| Method | Cloud Run **Connect repository** → Cloud Build → deploy |
+| Confirm | `/health`, `/docs`, `POST /v1/bootstrap`, `POST /v1/aging` |
 
-1. GCP project with **billing**
-2. Auth — either:
-   - `gcloud auth login` + `gcloud auth application-default login`, or
-   - Service account JSON → `GCP_SA_KEY_JSON=/path/to/key.json`
-3. Tools: `gcloud`, `terraform`, Python deps (`pip install -r requirements.txt`)
+No service-account JSON in chat is required for this path.
 
-## Run
+## Script path (optional / CI)
+
+One script for agent or workstation deploy (needs ADC or `GCP_SA_KEY_JSON`):
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=your-project-id
 export FINANCE_OPS_REGION=us-central1   # optional
-# export GCP_SA_KEY_JSON=/path/to/sa.json
-
 bash scripts/go_live_gcp.sh
 ```
-
-What it does:
 
 | Step | L# | Action |
 | --- | --- | --- |
@@ -30,24 +29,23 @@ What it does:
 | Cloud Run | L6 | Deploy with public `/health` |
 | Env | L4/L5 | `USE_VERTEX_VECTORS=true`, `GRAPH_BACKEND=sqlite` |
 | GCS upload | L4 | Policy vector catalog → embeddings bucket |
-| Smoke | — | `POST /v1/bootstrap`, aging, search, status |
+| Smoke | — | bootstrap, aging, search, status |
 
-## After go-live
+## Env vars on Cloud Run
 
-```bash
-URI=$(terraform -chdir=infra/terraform output -raw cloud_run_uri)
-curl -s "$URI/health"
-curl -s -X POST "$URI/v1/aging" -H 'Content-Type: application/json' \
-  -d '{"customer_id":"CUST-ACME"}'
+Set under **Edit & deploy new revision → Variables**:
+
+```text
+FINANCE_OPS_DATA_MODE=warehouse
+FINANCE_OPS_USE_VERTEX_VECTORS=true
+FINANCE_OPS_GRAPH_BACKEND=sqlite
+GOOGLE_CLOUD_PROJECT=gen-lang-client-0611250410
 ```
 
-**Matching Engine endpoint (optional follow-up):** create/deploy a Vector Search index from `gs://…-finance-ops-embeddings/vectors/`, then:
+## Parking lot after go-live
 
-```bash
-gcloud run services update finance-ops --region=$FINANCE_OPS_REGION \
-  --update-env-vars=FINANCE_OPS_VECTOR_INDEX_ENDPOINT=ENDPOINT_RESOURCE_NAME
-```
+- Enable BigQuery API + load tables for true L3 BQ reads.
+- Create Matching Engine index; set `FINANCE_OPS_VECTOR_INDEX_ENDPOINT`.
+- Point `NEO4J_URI` for managed Neo4j (`FINANCE_OPS_GRAPH_BACKEND=neo4j`).
 
-Until then the service uses Vertex embeddings (when permitted) + in-container ME simulator — still a live L4 path.
-
-**Neo4j:** set `NEO4J_URI` / user / password on the Cloud Run service (Aura or GCE) and `FINANCE_OPS_GRAPH_BACKEND=neo4j`. Default live graph is **sqlite** inside the revision (synced on `/v1/bootstrap`).
+See [master-plan-status.md](master-plan-status.md).
