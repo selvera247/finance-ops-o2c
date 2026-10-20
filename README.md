@@ -62,3 +62,11 @@ See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/
 - **L7 narrative:** [docs/cfo-cto-one-pager.md](docs/cfo-cto-one-pager.md)
 - **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/smoke_master_layer.py`
 - **HITL → Slack:** [docs/hitl-slack.md](docs/hitl-slack.md)
+
+## Cloud ladder L4–L6 (complete)
+
+- **Overview:** [docs/l4-l5-l6-complete.md](docs/l4-l5-l6-complete.md)
+- **L4 Vector Search:** [docs/l4-vector-search.md](docs/l4-vector-search.md)
+- **L5 Knowledge graph:** [docs/l5-knowledge-graph.md](docs/l5-knowledge-graph.md)
+- **L6 Cloud Run:** [docs/l6-cloud-run.md](docs/l6-cloud-run.md) · `Dockerfile` · `scripts/deploy_cloud_run.sh`
+- Smoke: `PYTHONPATH=. python scripts/smoke_l4_l5_l6.py`

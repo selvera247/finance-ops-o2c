@@ -7,6 +7,14 @@ from data_plane import repository as repo
 from finance_ops.lib.evidence import record_evidence
 
 
+def graph_status() -> dict[str, Any]:
+    """L5 GraphStore backend status."""
+    from data_plane.graph.store import get_graph_store
+
+    status = get_graph_store().status()
+    return {"status": "success", "graph": status, "needs_review": not status.get("ok", False)}
+
+
 def _adjacency() -> dict[str, list[tuple[str, str]]]:
     graph = repo.knowledge_graph()
     adj: dict[str, list[tuple[str, str]]] = defaultdict(list)
