@@ -180,3 +180,53 @@ def bq_get_payment(payment_id: str) -> dict[str, Any] | None:
         if str(row.get("payment_id", "")).upper() == payment_id.upper():
             return row
     return None
+
+
+def bq_apply_payment_match(payment_id: str, invoice_id: str) -> dict[str, Any]:
+    """Set payment status=matched in BigQuery (and matched_invoice_id when column exists)."""
+    try:
+        client, project = _client()
+        dataset = bigquery_dataset()
+        from google.cloud import bigquery
+
+        table = f"`{project}.{dataset}.payments`"
+        # Prefer full update; fall back if matched_invoice_id column missing
+        sql_full = f"""
+        UPDATE {table}
+        SET status = @status, matched_invoice_id = @invoice_id
+        WHERE payment_id = @payment_id
+        """
+        sql_status = f"""
+        UPDATE {table}
+        SET status = @status
+        WHERE payment_id = @payment_id
+        """
+        params = [
+            bigquery.ScalarQueryParameter("status", "STRING", "matched"),
+            bigquery.ScalarQueryParameter("invoice_id", "STRING", invoice_id),
+            bigquery.ScalarQueryParameter("payment_id", "STRING", payment_id),
+        ]
+        try:
+            job = client.query(
+                sql_full, job_config=bigquery.QueryJobConfig(query_parameters=params)
+            )
+            job.result()
+            return {"ok": True, "rows_affected": job.num_dml_affected_rows, "mode": "full"}
+        except Exception:
+            params_status = [
+                bigquery.ScalarQueryParameter("status", "STRING", "matched"),
+                bigquery.ScalarQueryParameter("payment_id", "STRING", payment_id),
+            ]
+            job = client.query(
+                sql_status,
+                job_config=bigquery.QueryJobConfig(query_parameters=params_status),
+            )
+            job.result()
+            return {
+                "ok": True,
+                "rows_affected": job.num_dml_affected_rows,
+                "mode": "status_only",
+                "note": "matched_invoice_id column absent; status updated only",
+            }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}

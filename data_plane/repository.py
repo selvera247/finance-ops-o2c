@@ -70,6 +70,64 @@ def get_payment(payment_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def apply_payment_match(payment_id: str, invoice_id: str) -> dict[str, Any]:
+    """Mark payment matched to invoice (warehouse and/or BigQuery)."""
+    payment_id = payment_id.strip().upper()
+    invoice_id = invoice_id.strip().upper()
+    payment = get_payment(payment_id)
+    if not payment:
+        return {"ok": False, "error": "payment_not_found", "payment_id": payment_id}
+    invoice = get_invoice(invoice_id)
+    if not invoice:
+        return {"ok": False, "error": "invoice_not_found", "invoice_id": invoice_id}
+    if str(payment.get("customer_id")) != str(invoice.get("customer_id")):
+        return {
+            "ok": False,
+            "error": "customer_mismatch",
+            "payment_customer": payment.get("customer_id"),
+            "invoice_customer": invoice.get("customer_id"),
+        }
+
+    mode = data_mode()
+    backends: list[str] = []
+
+    # Always persist to DuckDB when warehouse file exists (local + BQ dual-write for demos)
+    if _warehouse_ready() or mode == "warehouse":
+        from data_plane.warehouse import db
+
+        db.init_schema()
+        db.execute(
+            "UPDATE payments SET matched_invoice_id = ?, status = ? WHERE payment_id = ?",
+            [invoice_id, "matched", payment_id],
+        )
+        backends.append("duckdb")
+
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_apply_payment_match
+
+        bq_result = bq_apply_payment_match(payment_id, invoice_id)
+        if bq_result.get("ok"):
+            backends.append("bigquery")
+        else:
+            return {
+                "ok": False,
+                "error": bq_result.get("error", "bq_apply_failed"),
+                "backends": backends,
+                "bq": bq_result,
+            }
+
+    if not backends:
+        return {"ok": False, "error": "no_writable_backend", "mode": mode}
+
+    return {
+        "ok": True,
+        "payment_id": payment_id,
+        "invoice_id": invoice_id,
+        "status": "matched",
+        "backends": backends,
+    }
+
+
 def list_contracts(*, customer_id: str | None = None, active_only: bool = True) -> list[dict[str, Any]]:
     mode = data_mode()
     if mode == "fixtures" or (mode == "warehouse" and not _warehouse_ready()):

@@ -165,16 +165,20 @@ def decide_approval(
         )
     except Exception as exc:  # noqa: BLE001
         return {"status": "error", "error": str(exc), "needs_review": True}
+    from finance_ops.runtime.hitl_effects import after_decision
+
+    effect = after_decision(item)
     result = {
         "status": item.status,
         "approval": item.model_dump(),
+        "effect": effect,
         "needs_review": item.status != "approved",
     }
     result["evidence"] = record_evidence(
         agent="coordinator",
         action="decide_approval",
         inputs={"approval_id": approval_id, "decision": decision_norm, "actor": actor},
-        outputs={"status": item.status},
+        outputs={"status": item.status, "effect": effect},
         sources=["hitl:approval_store"],
     )
     return result
