@@ -104,6 +104,19 @@ def get_contract(contract_id: str) -> dict[str, Any] | None:
 
 
 def knowledge_graph() -> dict[str, Any]:
+    # L5: prefer persisted GraphStore when configured / already synced
+    try:
+        from data_plane.graph.store import get_graph_store, graph_backend
+
+        backend = graph_backend()
+        if backend in {"sqlite", "neo4j"}:
+            store = get_graph_store()
+            data = store.load()
+            if data.get("nodes"):
+                return data
+    except Exception:
+        pass
+
     if data_mode() == "fixtures" or not _warehouse_ready():
         return fixtures.knowledge_graph()
     from data_plane.warehouse import db
@@ -111,6 +124,7 @@ def knowledge_graph() -> dict[str, Any]:
     return {
         "nodes": db.query_dicts("SELECT id, type, label FROM kg_nodes"),
         "edges": db.query_dicts("SELECT source, target, type FROM kg_edges"),
+        "backend": "duckdb",
     }
 
 

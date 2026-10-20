@@ -88,9 +88,17 @@ See [master-layer-complete.md](master-layer-complete.md).
 - Durable DAG **signal()** for Temporal-shaped HITL resume hooks
 - Smoke: `scripts/smoke_master_layer.py`
 
+## Cloud ladder L4–L6 (shipped)
+
+See [l4-l5-l6-complete.md](l4-l5-l6-complete.md).
+
+1. **L4** Vertex embeddings + Vector Search / ME simulator.
+2. **L5** GraphStore: duckdb · sqlite · neo4j.
+3. **L6** Cloud Run Dockerfile + Terraform + FastAPI serving.
+
 ## Next build increments
 
-1. Replace keyword RAG with Vertex embeddings + Vector Search (L4).
-2. Persist knowledge graph (Neo4j / Spanner Graph) (L5).
-3. Terraform + Cloud Run / Agent Runtime deploy (L6 — skeleton exists).
-4. Live Slack app (signing secret + interactive value buttons) in a shared workspace.
+1. Live Matching Engine index deploy from embeddings bucket.
+2. Managed Neo4j / Spanner Graph in GCP (compose path exists locally).
+3. ADK Agent Engine on the same Cloud Run image (HTTP API is live today).
+4. Slack interactive payloads with signing secret (link buttons work now).

@@ -1,0 +1,31 @@
+# L6 Cloud Run image for finance_ops HTTP API
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    FINANCE_OPS_DATA_MODE=warehouse \
+    PORT=8080
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-cloud.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-cloud.txt
+
+COPY data ./data
+COPY data_plane ./data_plane
+COPY finance_ops ./finance_ops
+COPY pipelines ./pipelines
+COPY gui_connectors ./gui_connectors
+COPY evals ./evals
+COPY deploy ./deploy
+
+RUN chmod +x /app/deploy/entrypoint.sh \
+    && mkdir -p /app/.warehouse /app/.evidence /app/.downloads
+
+EXPOSE 8080
+CMD ["/app/deploy/entrypoint.sh"]
