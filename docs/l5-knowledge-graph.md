@@ -7,8 +7,10 @@
 | `duckdb` (default) | Warehouse `kg_nodes` / `kg_edges` |
 | `sqlite` | `.warehouse/knowledge_graph.sqlite` (portable file graph) |
 | `neo4j` | Bolt (`NEO4J_URI`) — Cypher production path |
+| `spanner` | Cloud Spanner tables (`SPANNER_INSTANCE` + `SPANNER_DATABASE`) |
 
-Spanner Graph–shaped relational edges are the duckdb/sqlite tables; Neo4j is the Cypher target.
+Local duckdb/sqlite are Graph-shaped; Neo4j is Cypher; Spanner uses `data_plane/graph/spanner_schema.sql`.  
+Managed go-live: [parking-lot-go-live.md](parking-lot-go-live.md) · `scripts/go_live_spanner.sh` · `scripts/go_live_neo4j_aura.md`.
 
 ## Local Neo4j
 

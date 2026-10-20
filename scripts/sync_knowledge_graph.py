@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""L5: sync KG into FINANCE_OPS_GRAPH_BACKEND (duckdb|sqlite|neo4j)."""
+"""L5: sync KG into FINANCE_OPS_GRAPH_BACKEND (duckdb|sqlite|neo4j|spanner)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--backend",
-        choices=["duckdb", "sqlite", "neo4j"],
+        choices=["duckdb", "sqlite", "neo4j", "spanner"],
         default=None,
         help="Override FINANCE_OPS_GRAPH_BACKEND for this run",
     )

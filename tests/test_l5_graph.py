@@ -39,3 +39,17 @@ def test_graph_tools_after_sqlite_sync(tmp_path: Path, monkeypatch) -> None:
     assert entity["status"] == "success"
     neigh = graph_neighborhood("PAY-9002", max_hops=2)
     assert neigh["nodes_reached"] >= 2
+
+
+def test_spanner_backend_selected_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("FINANCE_OPS_GRAPH_BACKEND", "spanner")
+    monkeypatch.setenv("SPANNER_INSTANCE", "finance-ops")
+    monkeypatch.setenv("SPANNER_DATABASE", "finance_ops")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "demo-project")
+    store = GraphStore()
+    assert store.backend == "spanner"
+    status = store.status()
+    assert status["backend"] == "spanner"
+    assert status["configured"] is True
+    # No live Spanner in unit tests — load should surface an error, not crash selection
+    assert "ok" in status

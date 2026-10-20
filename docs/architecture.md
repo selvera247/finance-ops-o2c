@@ -98,8 +98,10 @@ See [l4-l5-l6-complete.md](l4-l5-l6-complete.md) · [master-plan-status.md](mast
 
 ## Parking lot (optional)
 
+Scripts: [parking-lot-go-live.md](parking-lot-go-live.md) · `scripts/go_live_parking_lot.sh`.
+
 1. Live Matching Engine index + `FINANCE_OPS_VECTOR_INDEX_ENDPOINT`.
 2. Managed Neo4j / Spanner Graph in GCP (compose path exists locally).
 3. Enable BigQuery API + load demo tables in the live project.
-4. ADK Agent Engine on the same Cloud Run image.
+4. ADK Agent Engine on the same Cloud Run image (`FINANCE_OPS_SERVE_MODE=adk` or `adk deploy agent_engine`).
 5. Slack interactive payloads with signing secret (link buttons work now).
