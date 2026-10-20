@@ -44,8 +44,16 @@ GOOGLE_CLOUD_PROJECT=gen-lang-client-0611250410
 
 ## Parking lot after go-live
 
-- Enable BigQuery API + load tables for true L3 BQ reads.
-- Create Matching Engine index; set `FINANCE_OPS_VECTOR_INDEX_ENDPOINT`.
-- Point `NEO4J_URI` for managed Neo4j (`FINANCE_OPS_GRAPH_BACKEND=neo4j`).
+See [parking-lot-go-live.md](parking-lot-go-live.md):
+
+```bash
+export GOOGLE_CLOUD_PROJECT=gen-lang-client-0611250410
+bash scripts/go_live_parking_lot.sh
+```
+
+- Enable BigQuery API + load tables → `go_live_bigquery.sh`
+- Matching Engine index → `go_live_vector_search.py` (`SKIP_VECTOR=0`)
+- Neo4j Aura or Spanner → `go_live_neo4j_aura.md` / `go_live_spanner.sh`
+- ADK Agent Engine / same-image ADK → `go_live_agent_engine.sh`
 
 See [master-plan-status.md](master-plan-status.md).

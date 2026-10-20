@@ -72,4 +72,5 @@ See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/
 - **L5 Knowledge graph:** [docs/l5-knowledge-graph.md](docs/l5-knowledge-graph.md)
 - **L6 Cloud Run:** [docs/l6-cloud-run.md](docs/l6-cloud-run.md) · `Dockerfile`
 - **GCP go-live:** [docs/gcp-go-live.md](docs/gcp-go-live.md)
+- **Parking lot (BQ / ME / Spanner / Agent Engine):** [docs/parking-lot-go-live.md](docs/parking-lot-go-live.md) · `bash scripts/go_live_parking_lot.sh`
 - Smoke: `PYTHONPATH=. python scripts/smoke_l4_l5_l6.py`

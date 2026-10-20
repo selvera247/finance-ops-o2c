@@ -76,11 +76,11 @@ ERP JSON + portal CSVs / GUI
 
 ## Done vs parking lot
 
-| Done (master plan) | Optional parking lot |
+| Done (master plan) | Optional parking lot (scripts in-repo) |
 | --- | --- |
-| L7 narrative · L3 BQ mode · Slack HITL | Live BQ API + table load |
-| L4/L5/L6 code + **Cloud Run live** | Matching Engine endpoint · managed Neo4j |
-| Data→AI demo + CI | ADK Agent Engine on same image · craft items (MCP, memory, …) |
+| L7 narrative · L3 BQ mode · Slack HITL | Live BQ API + table load → `go_live_bigquery.sh` |
+| L4/L5/L6 code + **Cloud Run live** | Matching Engine · Spanner/Neo4j → parking-lot scripts |
+| Data→AI demo + CI | Same-image ADK / Agent Engine → `go_live_agent_engine.sh` |
 
 ## Ask / next conversation
 

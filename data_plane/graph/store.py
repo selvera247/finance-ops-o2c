@@ -1,7 +1,8 @@
-"""L5 Knowledge graph backends: duckdb | sqlite | neo4j.
+"""L5 Knowledge graph backends: duckdb | sqlite | neo4j | spanner.
 
-Spanner Graph-shaped SQL is available via the sqlite/duckdb edge tables;
-Neo4j is the production Cypher target when NEO4J_URI is set.
+- duckdb/sqlite: local Graph-shaped edge tables (live default on Cloud Run).
+- neo4j: managed Cypher (Aura) when NEO4J_URI / FINANCE_OPS_GRAPH_BACKEND=neo4j.
+- spanner: Cloud Spanner Graph-shaped tables (see spanner_schema.sql).
 """
 
 from __future__ import annotations
@@ -15,15 +16,17 @@ from typing import Any, Literal
 from data_plane.config import WAREHOUSE_DIR, ensure_dirs
 
 
-Backend = Literal["duckdb", "sqlite", "neo4j"]
+Backend = Literal["duckdb", "sqlite", "neo4j", "spanner"]
 
 
 def graph_backend() -> Backend:
     raw = os.getenv("FINANCE_OPS_GRAPH_BACKEND", "duckdb").strip().lower()
-    if raw in {"duckdb", "sqlite", "neo4j"}:
+    if raw in {"duckdb", "sqlite", "neo4j", "spanner"}:
         return raw  # type: ignore[return-value]
     if os.getenv("NEO4J_URI"):
         return "neo4j"
+    if os.getenv("SPANNER_INSTANCE") and os.getenv("SPANNER_DATABASE"):
+        return "spanner"
     return "duckdb"
 
 
@@ -46,6 +49,12 @@ class GraphStore:
             info["uri"] = os.getenv("NEO4J_URI")
             info["user"] = os.getenv("NEO4J_USER", "neo4j")
             info["configured"] = bool(os.getenv("NEO4J_URI"))
+        elif self.backend == "spanner":
+            info["instance"] = os.getenv("SPANNER_INSTANCE")
+            info["database"] = os.getenv("SPANNER_DATABASE")
+            info["configured"] = bool(
+                os.getenv("SPANNER_INSTANCE") and os.getenv("SPANNER_DATABASE")
+            )
         else:
             from data_plane.config import DUCKDB_PATH
 
@@ -77,6 +86,8 @@ class GraphStore:
     def replace_all(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
         if self.backend == "neo4j":
             return self._neo4j_replace(nodes, edges)
+        if self.backend == "spanner":
+            return self._spanner_replace(nodes, edges)
         if self.backend == "sqlite":
             con = self._init_sqlite()
             try:
@@ -120,6 +131,8 @@ class GraphStore:
     def load(self) -> dict[str, Any]:
         if self.backend == "neo4j":
             return self._neo4j_load()
+        if self.backend == "spanner":
+            return self._spanner_load()
         if self.backend == "sqlite":
             con = self._init_sqlite()
             try:
@@ -176,6 +189,80 @@ class GraphStore:
         user = os.getenv("NEO4J_USER", "neo4j")
         password = os.getenv("NEO4J_PASSWORD", "financeops")
         return GraphDatabase.driver(uri, auth=(user, password))
+
+    def _spanner_db(self):
+        try:
+            from google.cloud import spanner
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("google-cloud-spanner not installed") from exc
+        project = os.getenv("GOOGLE_CLOUD_PROJECT")
+        instance_id = os.getenv("SPANNER_INSTANCE")
+        database_id = os.getenv("SPANNER_DATABASE")
+        if not project or not instance_id or not database_id:
+            raise RuntimeError("GOOGLE_CLOUD_PROJECT, SPANNER_INSTANCE, SPANNER_DATABASE required")
+        client = spanner.Client(project=project)
+        return client.instance(instance_id).database(database_id)
+
+    def _spanner_replace(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+        import uuid
+
+        from google.cloud.spanner_v1 import param_types
+
+        db = self._spanner_db()
+
+        def _txn(transaction):
+            transaction.execute_update("DELETE FROM kg_edges WHERE true")
+            transaction.execute_update("DELETE FROM kg_nodes WHERE true")
+            for n in nodes:
+                transaction.execute_update(
+                    "INSERT INTO kg_nodes (id, type, label) VALUES (@id, @type, @label)",
+                    params={"id": n["id"], "type": n.get("type"), "label": n.get("label")},
+                    param_types={
+                        "id": param_types.STRING,
+                        "type": param_types.STRING,
+                        "label": param_types.STRING,
+                    },
+                )
+
+            for e in edges:
+                eid = e.get("edge_id") or uuid.uuid4().hex[:16]
+                transaction.execute_update(
+                    "INSERT INTO kg_edges (source, target, type, edge_id) "
+                    "VALUES (@source, @target, @type, @edge_id)",
+                    params={
+                        "source": e["source"],
+                        "target": e["target"],
+                        "type": e.get("type"),
+                        "edge_id": eid,
+                    },
+                    param_types={
+                        "source": param_types.STRING,
+                        "target": param_types.STRING,
+                        "type": param_types.STRING,
+                        "edge_id": param_types.STRING,
+                    },
+                )
+
+        db.run_in_transaction(_txn)
+        return {
+            "status": "success",
+            "backend": "spanner",
+            "nodes": len(nodes),
+            "edges": len(edges),
+        }
+
+    def _spanner_load(self) -> dict[str, Any]:
+        db = self._spanner_db()
+        with db.snapshot() as snapshot:
+            nodes = [
+                {"id": r[0], "type": r[1], "label": r[2]}
+                for r in snapshot.execute_sql("SELECT id, type, label FROM kg_nodes")
+            ]
+            edges = [
+                {"source": r[0], "target": r[1], "type": r[2]}
+                for r in snapshot.execute_sql("SELECT source, target, type FROM kg_edges")
+            ]
+        return {"nodes": nodes, "edges": edges, "backend": "spanner"}
 
     def _neo4j_replace(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
         driver = self._neo4j_driver()

@@ -1,4 +1,5 @@
-# L6 Cloud Run image for finance_ops HTTP API
+# L6 Cloud Run image: FastAPI HTTP API (default) or ADK api_server (same image).
+# FINANCE_OPS_SERVE_MODE=http|adk — see deploy/entrypoint.sh
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -7,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     FINANCE_OPS_DATA_MODE=warehouse \
+    FINANCE_OPS_SERVE_MODE=http \
     PORT=8080
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

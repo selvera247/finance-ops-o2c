@@ -39,4 +39,6 @@ curl -s -X POST localhost:8080/v1/bootstrap | head
 ## ADK web vs API
 
 - **Local demos:** `adk web` (full multi-agent UI)
-- **Cloud Run:** HTTP API above (live). ADK Agent Engine on the same image is optional parking lot.
+- **Cloud Run (default):** HTTP API above — `FINANCE_OPS_SERVE_MODE=http`
+- **Same image, ADK surface:** set `FINANCE_OPS_SERVE_MODE=adk` → `adk api_server` via `deploy/entrypoint.sh`
+- **Managed Agent Engine:** `bash scripts/go_live_agent_engine.sh` (see [parking-lot-go-live.md](parking-lot-go-live.md))
