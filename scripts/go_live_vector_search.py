@@ -87,22 +87,21 @@ def main() -> int:
     payload = json.loads(index_path.read_text(encoding="utf-8"))
     dim = int(payload.get("dim") or 64)
 
-    # Vertex Vector Search JSONL: {"id": "...", "embedding": [...]}
-    local_jsonl = ROOT / ".warehouse" / "vectors" / "me_datapoints.jsonl"
-    local_jsonl.parent.mkdir(parents=True, exist_ok=True)
-    with local_jsonl.open("w", encoding="utf-8") as fh:
+    # Vertex Vector Search: newline-delimited {"id","embedding"} — must use .json extension
+    local_json = ROOT / ".warehouse" / "vectors" / "me_datapoints.json"
+    local_json.parent.mkdir(parents=True, exist_ok=True)
+    with local_json.open("w", encoding="utf-8") as fh:
         for item in payload.get("items") or []:
             fh.write(
                 json.dumps({"id": item["doc_id"], "embedding": item["embedding"]}) + "\n"
             )
 
     gcs_prefix = f"gs://{bucket}/vector-search/{int(time.time())}"
+    gcs_file = f"{gcs_prefix}/me_datapoints.json"
     if skip_gcloud:
-        print(f"SKIP_GCLOUD=1 — upload manually:\n  gcloud storage cp {local_jsonl} {gcs_prefix}/me_datapoints.jsonl")
+        print(f"SKIP_GCLOUD=1 — upload manually:\n  gcloud storage cp {local_json} {gcs_file}")
     else:
-        _check_gcloud(
-            ["storage", "cp", str(local_jsonl), f"{gcs_prefix}/me_datapoints.jsonl"]
-        )
+        _check_gcloud(["storage", "cp", str(local_json), gcs_file])
 
     try:
         from google.cloud import aiplatform
