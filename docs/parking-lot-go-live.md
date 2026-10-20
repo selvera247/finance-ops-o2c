@@ -35,3 +35,8 @@ Agent Engine managed deploy: `adk deploy agent_engine` via `go_live_agent_engine
 ## Auth
 
 Needs project `gen-lang-client-0611250410` ADC or `GCP_SA_KEY_JSON` with BigQuery, Vertex AI, Storage, Cloud Run Admin, Spanner Admin (or Editor).
+
+## After idle teardown / next demo
+
+- Turn Spanner + Matching Engine back on: [demo-reactivate.md](demo-reactivate.md)
+- Stop idle cost again: [demo-teardown.md](demo-teardown.md)
