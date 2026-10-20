@@ -9,9 +9,9 @@
     "PYTHONPATH": "/app"
   },
   "extra_packages": [
-    "data_plane",
-    "pipelines",
-    "gui_connectors",
-    "data"
+    "../data_plane",
+    "../pipelines",
+    "../gui_connectors",
+    "../data"
   ]
 }
