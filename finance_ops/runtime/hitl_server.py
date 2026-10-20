@@ -52,14 +52,24 @@ class Handler(BaseHTTPRequestHandler):
             decision = "approved" if parsed.path == "/approve" else "rejected"
             actor = (qs.get("actor") or ["hitl_web"])[0]
             try:
+                from finance_ops.runtime.hitl_effects import after_decision
+
                 item = DEFAULT_STORE.decide(
                     approval_id, decision=decision, actor=actor, resume_token=token
+                )
+                effect = after_decision(item)
+                effect_line = (
+                    f"<p>effect: applied={effect.get('applied')} "
+                    f"{effect.get('payment_id') or ''}→{effect.get('invoice_id') or ''}</p>"
+                    if effect.get("kind") or effect.get("applied")
+                    else ""
                 )
                 self._html(
                     HTML.format(
                         body=(
                             f"<p>{decision}: {item.approval_id}</p>"
                             f"<p>decided_by={item.decided_by}</p>"
+                            f"{effect_line}"
                             f"<p><a href='/'>Back</a></p>"
                         )
                     )
@@ -99,13 +109,22 @@ class Handler(BaseHTTPRequestHandler):
                 if ":" in value:
                     approval_id, token, decision = (value.split(":", 2) + ["", "", ""])[:3]
                     try:
+                        from finance_ops.runtime.hitl_effects import after_decision
+
                         item = DEFAULT_STORE.decide(
                             approval_id,
                             decision=decision,  # type: ignore[arg-type]
                             actor=f"slack:{parsed_action.get('user') or 'user'}",
                             resume_token=token,
                         )
-                        self._json({"ok": True, "approval": item.model_dump()})
+                        effect = after_decision(item)
+                        self._json(
+                            {
+                                "ok": True,
+                                "approval": item.model_dump(),
+                                "effect": effect,
+                            }
+                        )
                     except Exception as exc:  # noqa: BLE001
                         self._json({"ok": False, "error": str(exc)}, code=400)
                     return
@@ -127,13 +146,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/decide":
             try:
+                from finance_ops.runtime.hitl_effects import after_decision
+
                 item = DEFAULT_STORE.decide(
                     body["approval_id"],
                     decision=body["decision"],
                     actor=body.get("actor", "api"),
                     resume_token=body.get("resume_token"),
                 )
-                self._json(item.model_dump())
+                effect = after_decision(item)
+                payload = item.model_dump()
+                payload["effect"] = effect
+                self._json(payload)
             except Exception as exc:  # noqa: BLE001
                 self._json({"error": str(exc)}, code=400)
             return

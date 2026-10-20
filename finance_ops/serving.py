@@ -33,6 +33,18 @@ class ApprovalBody(BaseModel):
     related_ids: str = ""
 
 
+class PaymentMatchBody(BaseModel):
+    payment_id: str = "PAY-1001"
+    invoice_id: str = ""
+
+
+class DecideBody(BaseModel):
+    approval_id: str
+    decision: str = "approved"
+    resume_token: str = ""
+    actor: str = "api"
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -80,6 +92,32 @@ def api_request_approval(body: ApprovalBody) -> dict[str, Any]:
         amount=body.amount,
         summary=body.summary,
         related_ids=body.related_ids,
+    )
+
+
+@app.post("/v1/suggest_payment_match")
+def api_suggest_payment_match(body: PaymentMatchBody) -> dict[str, Any]:
+    from finance_ops.tools.payment_tools import suggest_payment_match
+
+    return suggest_payment_match(body.payment_id)
+
+
+@app.post("/v1/request_cash_app_approval")
+def api_request_cash_app_approval(body: PaymentMatchBody) -> dict[str, Any]:
+    from finance_ops.tools.payment_tools import request_cash_app_approval
+
+    return request_cash_app_approval(body.payment_id, invoice_id=body.invoice_id or "")
+
+
+@app.post("/v1/decide_approval")
+def api_decide_approval(body: DecideBody) -> dict[str, Any]:
+    from finance_ops.tools.runtime_tools import decide_approval
+
+    return decide_approval(
+        body.approval_id,
+        body.decision,
+        resume_token=body.resume_token,
+        actor=body.actor,
     )
 
 

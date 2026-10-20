@@ -4,10 +4,15 @@ from typing import Any
 
 from data_plane import repository as repo
 from finance_ops.lib.evidence import record_evidence
+from finance_ops.runtime.circuit_breaker import DEFAULT_BREAKER, CircuitOpenError
 
 
 def _clean(row: dict[str, Any]) -> dict[str, Any]:
     return {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in row.items()}
+
+
+def _guard(tool_name: str) -> None:
+    DEFAULT_BREAKER.record_tool(tool_name)
 
 
 def lookup_payment(payment_id: str) -> dict[str, Any]:
@@ -79,5 +84,113 @@ def suggest_payment_match(payment_id: str) -> dict[str, Any]:
         inputs={"payment_id": payment_id},
         outputs={"recommendation": result["recommendation"], "candidate_count": len(candidates)},
         sources=[repo.source_label(), "policy:POL-RECON-01"],
+    )
+    return result
+
+
+def apply_payment_match(payment_id: str, invoice_id: str) -> dict[str, Any]:
+    """Apply a match immediately (prefer request_cash_app_approval + HITL in demos)."""
+    try:
+        _guard("apply_payment_match")
+    except CircuitOpenError as exc:
+        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
+    payment_id = payment_id.strip().upper()
+    invoice_id = invoice_id.strip().upper()
+    applied = repo.apply_payment_match(payment_id, invoice_id)
+    result = {
+        "status": "success" if applied.get("ok") else "error",
+        "applied": applied,
+        "needs_review": not applied.get("ok"),
+    }
+    result["evidence"] = record_evidence(
+        agent="payments_agent",
+        action="apply_payment_match",
+        inputs={"payment_id": payment_id, "invoice_id": invoice_id},
+        outputs=applied,
+        sources=[repo.source_label()],
+    )
+    return result
+
+
+def request_cash_app_approval(
+    payment_id: str,
+    invoice_id: str = "",
+    notify_slack: bool = True,
+) -> dict[str, Any]:
+    """Suggest (if needed) then open Slack/HITL gate; approve applies the match."""
+    try:
+        _guard("request_cash_app_approval")
+    except CircuitOpenError as exc:
+        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
+
+    from finance_ops.runtime.hitl import DEFAULT_STORE
+    from finance_ops.runtime.slack_hitl import approval_links, notify_slack as slack_notify
+
+    payment_id = payment_id.strip().upper()
+    suggestion = suggest_payment_match(payment_id)
+    if suggestion.get("status") != "success":
+        return {**suggestion, "needs_review": True}
+
+    invoice_id = (invoice_id or suggestion.get("recommendation") or "").strip().upper()
+    payment = suggestion.get("payment") or {}
+    amount = float(payment.get("amount") or 0)
+
+    if not invoice_id:
+        # Orphan cash — still open HITL for escalate/reject narrative
+        summary = f"Cash app escalate: {payment_id} — no invoice candidates"
+        kind = "cash_app_escalate"
+        payload = {
+            "payment_id": payment_id,
+            "invoice_id": None,
+            "candidates": suggestion.get("candidates") or [],
+            "related_ids": [payment_id],
+        }
+    else:
+        summary = f"Cash app match: {payment_id} → {invoice_id}"
+        kind = "cash_app_match"
+        payload = {
+            "payment_id": payment_id,
+            "invoice_id": invoice_id,
+            "recommended_invoice_id": suggestion.get("recommendation"),
+            "candidates": suggestion.get("candidates") or [],
+            "related_ids": [payment_id, invoice_id],
+        }
+
+    approval = DEFAULT_STORE.create(
+        kind=kind,
+        amount=amount,
+        summary=summary,
+        payload=payload,
+        currency=str(payment.get("currency") or "USD"),
+    )
+    links = approval_links(approval)
+    slack = slack_notify(approval) if notify_slack else {"sent": False, "skipped": True}
+    result = {
+        "status": "pending",
+        "payment_id": payment_id,
+        "invoice_id": invoice_id or None,
+        "suggestion": {
+            "recommendation": suggestion.get("recommendation"),
+            "candidates": suggestion.get("candidates"),
+        },
+        "approval": approval.model_dump(),
+        "links": links,
+        "slack": slack,
+        "needs_review": True,
+        "resume_hint": (
+            f"Approve to apply match, or reject to leave unmatched. "
+            f"Slack button or {links.get('approve')}"
+        ),
+    }
+    result["evidence"] = record_evidence(
+        agent="payments_agent",
+        action="request_cash_app_approval",
+        inputs={"payment_id": payment_id, "invoice_id": invoice_id},
+        outputs={
+            "approval_id": approval.approval_id,
+            "kind": kind,
+            "slack_sent": slack.get("sent"),
+        },
+        sources=[repo.source_label(), "hitl:approval_store", "slack:hitl"],
     )
     return result

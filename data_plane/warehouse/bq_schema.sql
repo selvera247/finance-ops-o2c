@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS `${PROJECT}.${DATASET}.payments` (
   currency STRING,
   status STRING,
   reference STRING,
-  received_at STRING
+  received_at STRING,
+  matched_invoice_id STRING
 );
 
 CREATE TABLE IF NOT EXISTS `${PROJECT}.${DATASET}.contracts` (

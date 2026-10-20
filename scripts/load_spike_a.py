@@ -120,6 +120,100 @@ def load(*, replace_customers: bool = False) -> dict:
         con.close()
 
 
+def load_bigquery(*, merge: bool = True) -> dict:
+    """Upsert Spike A rows into BigQuery finance_ops dataset."""
+    import os
+
+    from data_plane.config import bigquery_dataset, gcp_project
+
+    project = gcp_project() or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        return {"status": "error", "error": "GOOGLE_CLOUD_PROJECT required"}
+
+    from google.cloud import bigquery
+
+    dataset = bigquery_dataset()
+    client = bigquery.Client(project=project)
+
+    # Ensure matched_invoice_id exists (ignore if already present)
+    try:
+        client.query(
+            f"ALTER TABLE `{project}.{dataset}.payments` "
+            "ADD COLUMN IF NOT EXISTS matched_invoice_id STRING"
+        ).result()
+    except Exception as exc:  # noqa: BLE001
+        # Older BQ without IF NOT EXISTS — try bare ADD once
+        try:
+            client.query(
+                f"ALTER TABLE `{project}.{dataset}.payments` "
+                "ADD COLUMN matched_invoice_id STRING"
+            ).result()
+        except Exception:
+            pass  # column may already exist
+        _ = exc
+
+    payments = _read_csv("payments.csv")
+    invoices = _read_csv("invoices.csv")
+
+    inv_rows = []
+    for row in invoices:
+        status = row["status"].strip()
+        inv_rows.append(
+            {
+                "invoice_id": row["invoice_id"].strip(),
+                "customer_id": row["customer_id"].strip(),
+                "amount": float(row["amount"]),
+                "currency": (row.get("currency") or "USD").strip(),
+                "status": status,
+                "aging_bucket": "1-30" if status == "open" else "31-60",
+                "due_date": "2026-09-30",
+                "po_number": (row.get("po_number") or "").strip() or None,
+            }
+        )
+
+    pay_rows = []
+    for row in payments:
+        pay_rows.append(
+            {
+                "payment_id": row["payment_id"].strip(),
+                "customer_id": row["customer_id"].strip(),
+                "amount": float(row["amount"]),
+                "currency": (row.get("currency") or "USD").strip(),
+                "status": row["status"].strip(),
+                "reference": row.get("reference") or "",
+                "received_at": (row.get("received_at") or "").strip(),
+                "matched_invoice_id": None,
+            }
+        )
+
+    if merge:
+        # Delete spike payment/invoice ids then insert (idempotent reload)
+        pay_ids = [r["payment_id"] for r in pay_rows]
+        inv_ids = [r["invoice_id"] for r in inv_rows]
+        if pay_ids:
+            id_list = ", ".join(f"'{i}'" for i in pay_ids)
+            client.query(
+                f"DELETE FROM `{project}.{dataset}.payments` WHERE payment_id IN ({id_list})"
+            ).result()
+        if inv_ids:
+            id_list = ", ".join(f"'{i}'" for i in inv_ids)
+            client.query(
+                f"DELETE FROM `{project}.{dataset}.invoices` WHERE invoice_id IN ({id_list})"
+            ).result()
+
+    errors_inv = client.insert_rows_json(f"{project}.{dataset}.invoices", inv_rows)
+    errors_pay = client.insert_rows_json(f"{project}.{dataset}.payments", pay_rows)
+    ok = not errors_inv and not errors_pay
+    return {
+        "status": "success" if ok else "error",
+        "project": project,
+        "dataset": dataset,
+        "counts": {"payments": len(pay_rows), "invoices": len(inv_rows)},
+        "errors": {"invoices": errors_inv, "payments": errors_pay},
+        "walkthrough": ["PAY-1001", "PAY-2001", "PAY-3001"],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -127,10 +221,30 @@ def main() -> int:
         action="store_true",
         help="Delete existing warehouse rows for Spike A customer_ids before load",
     )
+    parser.add_argument(
+        "--bigquery",
+        action="store_true",
+        help="Also (or only with --bigquery-only) load into BigQuery",
+    )
+    parser.add_argument(
+        "--bigquery-only",
+        action="store_true",
+        help="Skip DuckDB; load Spike A into BigQuery only",
+    )
     args = parser.parse_args()
-    result = load(replace_customers=args.replace_customers)
-    print(json.dumps(result, indent=2))
-    return 0 if result.get("status") == "success" else 1
+    out: dict = {}
+    if not args.bigquery_only:
+        out["warehouse"] = load(replace_customers=args.replace_customers)
+    if args.bigquery or args.bigquery_only:
+        out["bigquery"] = load_bigquery(merge=True)
+    print(json.dumps(out if len(out) > 1 else next(iter(out.values())), indent=2))
+    warehouse_ok = out.get("warehouse", {}).get("status", "success") == "success"
+    bq_ok = out.get("bigquery", {}).get("status", "success") == "success"
+    if args.bigquery_only:
+        return 0 if bq_ok else 1
+    if args.bigquery:
+        return 0 if warehouse_ok and bq_ok else 1
+    return 0 if warehouse_ok else 1
 
 
 if __name__ == "__main__":
