@@ -135,22 +135,25 @@ def load_bigquery(*, merge: bool = True) -> dict:
     dataset = bigquery_dataset()
     client = bigquery.Client(project=project)
 
-    # Ensure matched_invoice_id exists (ignore if already present)
-    try:
-        client.query(
-            f"ALTER TABLE `{project}.{dataset}.payments` "
-            "ADD COLUMN IF NOT EXISTS matched_invoice_id STRING"
-        ).result()
-    except Exception as exc:  # noqa: BLE001
-        # Older BQ without IF NOT EXISTS — try bare ADD once
+    def _ensure_payments_column(column: str, bq_type: str = "STRING") -> None:
+        """Add a column if missing (live tables may predate bq_schema.sql)."""
         try:
             client.query(
                 f"ALTER TABLE `{project}.{dataset}.payments` "
-                "ADD COLUMN matched_invoice_id STRING"
+                f"ADD COLUMN IF NOT EXISTS {column} {bq_type}"
             ).result()
-        except Exception:
-            pass  # column may already exist
-        _ = exc
+        except Exception:  # noqa: BLE001
+            try:
+                client.query(
+                    f"ALTER TABLE `{project}.{dataset}.payments` "
+                    f"ADD COLUMN {column} {bq_type}"
+                ).result()
+            except Exception:
+                pass  # column may already exist
+
+    # Live BQ payments may lack columns added later in bq_schema.sql
+    _ensure_payments_column("matched_invoice_id")
+    _ensure_payments_column("received_at")
 
     payments = _read_csv("payments.csv")
     invoices = _read_csv("invoices.csv")
@@ -186,23 +189,56 @@ def load_bigquery(*, merge: bool = True) -> dict:
             }
         )
 
+    merge_notes: list[str] = []
+
+    def _delete_ids(table: str, id_col: str, ids: list[str]) -> bool:
+        """DELETE by id; return False if streaming buffer blocks (caller skips re-insert)."""
+        if not ids:
+            return True
+        id_list = ", ".join(f"'{i}'" for i in ids)
+        try:
+            client.query(
+                f"DELETE FROM `{project}.{dataset}.{table}` WHERE {id_col} IN ({id_list})"
+            ).result()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            msg = str(exc)
+            if "streaming buffer" in msg.lower():
+                merge_notes.append(
+                    f"{table}: DELETE skipped (streaming buffer); keeping existing rows"
+                )
+                return False
+            raise
+
+    def _existing_ids(table: str, id_col: str, ids: list[str]) -> set[str]:
+        if not ids:
+            return set()
+        id_list = ", ".join(f"'{i}'" for i in ids)
+        rows = client.query(
+            f"SELECT {id_col} AS id FROM `{project}.{dataset}.{table}` "
+            f"WHERE {id_col} IN ({id_list})"
+        ).result()
+        return {str(r["id"]) for r in rows}
+
     if merge:
-        # Delete spike payment/invoice ids then insert (idempotent reload)
+        # Prefer delete+insert; if streaming buffer blocks DELETE, insert only missing ids
         pay_ids = [r["payment_id"] for r in pay_rows]
         inv_ids = [r["invoice_id"] for r in inv_rows]
-        if pay_ids:
-            id_list = ", ".join(f"'{i}'" for i in pay_ids)
-            client.query(
-                f"DELETE FROM `{project}.{dataset}.payments` WHERE payment_id IN ({id_list})"
-            ).result()
-        if inv_ids:
-            id_list = ", ".join(f"'{i}'" for i in inv_ids)
-            client.query(
-                f"DELETE FROM `{project}.{dataset}.invoices` WHERE invoice_id IN ({id_list})"
-            ).result()
+        pay_cleared = _delete_ids("payments", "payment_id", pay_ids)
+        inv_cleared = _delete_ids("invoices", "invoice_id", inv_ids)
+        if not pay_cleared:
+            existing = _existing_ids("payments", "payment_id", pay_ids)
+            pay_rows = [r for r in pay_rows if r["payment_id"] not in existing]
+        if not inv_cleared:
+            existing = _existing_ids("invoices", "invoice_id", inv_ids)
+            inv_rows = [r for r in inv_rows if r["invoice_id"] not in existing]
 
-    errors_inv = client.insert_rows_json(f"{project}.{dataset}.invoices", inv_rows)
-    errors_pay = client.insert_rows_json(f"{project}.{dataset}.payments", pay_rows)
+    errors_inv = (
+        client.insert_rows_json(f"{project}.{dataset}.invoices", inv_rows) if inv_rows else []
+    )
+    errors_pay = (
+        client.insert_rows_json(f"{project}.{dataset}.payments", pay_rows) if pay_rows else []
+    )
     ok = not errors_inv and not errors_pay
     return {
         "status": "success" if ok else "error",
@@ -210,9 +246,9 @@ def load_bigquery(*, merge: bool = True) -> dict:
         "dataset": dataset,
         "counts": {"payments": len(pay_rows), "invoices": len(inv_rows)},
         "errors": {"invoices": errors_inv, "payments": errors_pay},
+        "merge_notes": merge_notes,
         "walkthrough": ["PAY-1001", "PAY-2001", "PAY-3001"],
     }
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
