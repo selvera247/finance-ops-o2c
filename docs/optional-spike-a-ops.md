@@ -37,6 +37,13 @@ $env:PYTHONPATH = (Get-Location).Path
 python scripts\load_spike_a.py --bigquery-only
 ```
 
+If payments fail with `no such field: received_at`, the loader adds that column
+automatically on current `main`. Or migrate once:
+
+```powershell
+python -c "from google.cloud import bigquery; c=bigquery.Client(project='gen-lang-client-0611250410'); c.query('ALTER TABLE `gen-lang-client-0611250410.finance_ops.payments` ADD COLUMN IF NOT EXISTS received_at STRING').result(); print('ok')"
+```
+
 Then confirm:
 
 ```powershell
