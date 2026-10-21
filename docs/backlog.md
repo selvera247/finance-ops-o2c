@@ -16,7 +16,7 @@
 | ID | Item | Status |
 | --- | --- | --- |
 | **C1** | **Read-only MCP** | **Done** — `python -m finance_ops.mcp` · [mcp.md](mcp.md) |
-| **C7** | **Sandboxed code exec (A+B+D)** | **Done** — [sandbox.md](sandbox.md); **C7-C** containers later |
+| **C7** | **Sandboxed code exec (A+B+D+C)** | **Done** — [sandbox.md](sandbox.md); Docker/gVisor via `FINANCE_OPS_SANDBOX_ISOLATION` |
 | **C3** | **Shadow trajectories** | **Done** — [shadow-trajectories.md](shadow-trajectories.md) |
 | **C2** | **3-tier memory + eviction** | **Done** — [memory.md](memory.md) |
 | C4–C6 | Context budget · sanitize · self-heal | Later |

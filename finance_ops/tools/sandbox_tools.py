@@ -7,7 +7,7 @@ from typing import Any
 
 from finance_ops.lib.evidence import record_evidence
 from finance_ops.runtime.circuit_breaker import DEFAULT_BREAKER
-from finance_ops.runtime.sandbox import run_calc, run_python
+from finance_ops.runtime.sandbox import run_calc, run_python, sandbox_isolation_status
 
 
 def _guard(tool_name: str) -> None:
@@ -61,9 +61,10 @@ def run_sandboxed_calc(expression: str, inputs_json: str = "{}") -> dict[str, An
 
 
 def run_sandboxed_python(code: str, inputs_json: str = "{}") -> dict[str, Any]:
-    """C7-B: run short Python in an isolated ``python -I`` subprocess.
+    """C7-B/C: run short Python in subprocess or Docker container (C7-C).
 
     Assign RESULT = ... in the guest code. ``inputs`` is injected as a dict.
+    Isolation via FINANCE_OPS_SANDBOX_ISOLATION=auto|subprocess|container.
     Policy wall (D): no finance_ops imports, no apply/HITL, no open/os/subprocess.
     Does not apply payment matches — use request_cash_app_approval for writes.
     """
@@ -96,7 +97,26 @@ def run_sandboxed_python(code: str, inputs_json: str = "{}") -> dict[str, Any]:
             "result": result.get("result"),
             "error": result.get("error"),
             "isolation": result.get("isolation"),
+            "isolation_fallback": result.get("isolation_fallback"),
         },
-        sources=["sandbox:python", "policy:D"],
+        sources=["sandbox:python", "policy:D", f"isolation:{result.get('isolation')}"],
+    )
+    return result
+
+
+def sandbox_status() -> dict[str, Any]:
+    """C7-C: report whether Docker container isolation is available/active."""
+    _guard("sandbox_status")
+    result = sandbox_isolation_status()
+    result["evidence"] = record_evidence(
+        agent="sandbox",
+        action="sandbox_status",
+        inputs={},
+        outputs={
+            "effective": result.get("effective"),
+            "docker_available": result.get("docker_available"),
+            "image_present": result.get("image_present"),
+        },
+        sources=["sandbox:c7c"],
     )
     return result
