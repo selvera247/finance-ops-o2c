@@ -10,6 +10,11 @@ from finance_ops.tools.payment_tools import (
     request_cash_app_approval,
     suggest_payment_match,
 )
+from finance_ops.tools.craft_tools import (
+    budget_pack_context,
+    heal_suggest_payment,
+    heal_tool_result,
+)
 from finance_ops.tools.memory_tools import (
     memory_get,
     memory_promote,
@@ -32,6 +37,8 @@ payments_agent = Agent(
         "Payments specialist. Treat matches as needs_review unless already matched. "
         "For cash app: suggest_payment_match then request_cash_app_approval "
         "(Slack/HITL); do not call apply_payment_match unless ops explicitly bypasses HITL. "
+        "On suggest failures use heal_suggest_payment (one retry then needs_review). "
+        "After list_unmatched_payments, budget_pack_context to keep context small. "
         "Shadow (C3): shadow_cash_app_trajectory or shadow_spike_a_walkthrough to record "
         "what would happen without HITL/apply/Slack — prefer for dry demos. "
         "Memory (C2): memory_put working notes per payment; promote to episodic/long_term "
@@ -56,5 +63,8 @@ payments_agent = Agent(
         memory_get,
         memory_search,
         memory_promote,
+        budget_pack_context,
+        heal_suggest_payment,
+        heal_tool_result,
     ],
 )

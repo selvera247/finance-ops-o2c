@@ -36,6 +36,12 @@ from finance_ops.tools.runtime_tools import (
     start_durable_reconcile,
 )
 from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
+from finance_ops.tools.craft_tools import (
+    budget_pack_context,
+    heal_suggest_payment,
+    heal_tool_result,
+    sanitize_payload,
+)
 from finance_ops.tools.memory_tools import (
     memory_evict,
     memory_get,
@@ -83,6 +89,9 @@ root_agent = Agent(
         "Memory (C2): working / episodic / long_term via memory_put/get/search/list; "
         "memory_promote upward; memory_evict / memory_status for caps. "
         "Use working for session scratch, episodic for turn notes, long_term for durable facts.\n"
+        "Craft C4–C6: budget_pack_context before stuffing large tool JSON into reasoning; "
+        "sanitize_payload to preview redaction; heal_suggest_payment / heal_tool_result on failures "
+        "(retry once, then needs_review — never invent balances).\n"
         "Always cite evidence_id. For write-offs say needs_review.\n"
         "Never invent balances."
     ),
@@ -118,6 +127,10 @@ root_agent = Agent(
         memory_search,
         memory_list,
         memory_promote,
+        budget_pack_context,
+        sanitize_payload,
+        heal_tool_result,
+        heal_suggest_payment,
         memory_evict,
         memory_status,
     ],
