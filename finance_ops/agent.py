@@ -49,11 +49,17 @@ from finance_ops.tools.memory_tools import (
     memory_search,
     memory_status,
 )
+from finance_ops.tools.portal_spike_tools import (
+    classify_portal_exception,
+    request_portal_extract_review,
+    spike_b_walkthrough,
+)
 from finance_ops.tools.shadow_tools import (
     get_shadow_trajectory,
     list_shadow_trajectories,
     shadow_cash_app_trajectory,
     shadow_spike_a_walkthrough,
+    shadow_spike_b_walkthrough,
 )
 
 root_agent = Agent(
@@ -75,6 +81,9 @@ root_agent = Agent(
         "- fetch_legacy_bank_statement for forced GUI pull\n"
         "- process_portal_incoming to drain data/incoming/<portal_id>/\n"
         "- list_portal_extracts (or list_bank_statements) to inspect ingested rows\n"
+        "Spike B (payer_availity): after load_spike_b, use spike_b_walkthrough / "
+        "classify_portal_exception / request_portal_extract_review; "
+        "shadow_spike_b_walkthrough for dry demos.\n"
         "HITL: request_approval (notifies Slack when configured); "
         "get_approval / list_pending_approvals; decide_approval after human decides.\n"
         "Durable: start_durable_reconcile / resume_durable_workflow for multi-step DAG.\n"
@@ -83,8 +92,9 @@ root_agent = Agent(
         "Sandbox: run_sandboxed_calc / run_sandboxed_python for formulas only; "
         "they cannot apply matches or call write tools — use HITL for mutations. "
         "sandbox_status reports C7-C Docker isolation readiness.\n"
-        "Shadow (C3): shadow_cash_app_trajectory / shadow_spike_a_walkthrough propose "
-        "HITL+apply without mutating; list/get_shadow_trajectory to inspect.\n"
+        "Shadow (C3): shadow_cash_app_trajectory / shadow_spike_a_walkthrough / "
+        "shadow_spike_b_walkthrough propose HITL without mutating; "
+        "list/get_shadow_trajectory to inspect.\n"
         "Memory (C2): working / episodic / long_term via memory_put/get/search/list; "
         "memory_promote upward; memory_evict / memory_status for caps. "
         "Use working for session scratch, episodic for turn notes, long_term for durable facts.\n"
@@ -101,6 +111,9 @@ root_agent = Agent(
         process_portal_incoming,
         list_portal_extracts,
         list_bank_statements,
+        classify_portal_exception,
+        request_portal_extract_review,
+        spike_b_walkthrough,
         resolve_portal_with_fallback,
         request_approval,
         list_pending_approvals,
@@ -117,6 +130,7 @@ root_agent = Agent(
         sandbox_status,
         shadow_cash_app_trajectory,
         shadow_spike_a_walkthrough,
+        shadow_spike_b_walkthrough,
         list_shadow_trajectories,
         get_shadow_trajectory,
         memory_put,

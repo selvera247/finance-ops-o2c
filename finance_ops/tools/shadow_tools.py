@@ -9,8 +9,10 @@ from finance_ops.runtime.circuit_breaker import DEFAULT_BREAKER
 from finance_ops.runtime.shadow import (
     DEFAULT_SHADOW,
     SPIKE_A_WALKTHROUGH,
+    SPIKE_B_WALKTHROUGH,
     build_cash_app_shadow,
     build_spike_a_shadow_bundle,
+    build_spike_b_shadow_bundle,
 )
 
 
@@ -69,6 +71,30 @@ def shadow_spike_a_walkthrough() -> dict[str, Any]:
             "count": len(bundle.get("trajectories") or []),
         },
         sources=["shadow:spike_a", "policy:no_side_effects"],
+    )
+    return result
+
+
+def shadow_spike_b_walkthrough() -> dict[str, Any]:
+    """C3+Spike B: shadow CLM-B1001 / B2001 / B3001 without creating HITL."""
+    _guard("shadow_spike_b_walkthrough")
+    bundle = build_spike_b_shadow_bundle(SPIKE_B_WALKTHROUGH)
+    result = {
+        "status": "success",
+        "mode": "shadow",
+        "mutated": False,
+        "bundle": bundle,
+        "needs_review": True,
+    }
+    result["evidence"] = record_evidence(
+        agent="coordinator",
+        action="shadow_spike_b_walkthrough",
+        inputs={"claim_ids": list(SPIKE_B_WALKTHROUGH)},
+        outputs={
+            "bundle_id": bundle.get("bundle_id"),
+            "count": len(bundle.get("trajectories") or []),
+        },
+        sources=["shadow:spike_b", "policy:no_side_effects"],
     )
     return result
 
