@@ -35,7 +35,11 @@ from finance_ops.tools.runtime_tools import (
     run_typed_a2a_aging,
     start_durable_reconcile,
 )
-from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
+from finance_ops.tools.sandbox_tools import (
+    run_sandboxed_calc,
+    run_sandboxed_python,
+    sandbox_status,
+)
 from finance_ops.tools.memory_tools import (
     memory_evict,
     memory_get,
@@ -77,7 +81,8 @@ root_agent = Agent(
         "Typed A2A: run_typed_a2a_aging for structured invoice specialist handoffs.\n"
         "Circuit: circuit_status if tools fail with circuit_open.\n"
         "Sandbox: run_sandboxed_calc / run_sandboxed_python for formulas only; "
-        "they cannot apply matches or call write tools — use HITL for mutations.\n"
+        "they cannot apply matches or call write tools — use HITL for mutations. "
+        "sandbox_status reports C7-C Docker isolation readiness.\n"
         "Shadow (C3): shadow_cash_app_trajectory / shadow_spike_a_walkthrough propose "
         "HITL+apply without mutating; list/get_shadow_trajectory to inspect.\n"
         "Memory (C2): working / episodic / long_term via memory_put/get/search/list; "
@@ -109,6 +114,7 @@ root_agent = Agent(
         reset_circuit_breaker,
         run_sandboxed_calc,
         run_sandboxed_python,
+        sandbox_status,
         shadow_cash_app_trajectory,
         shadow_spike_a_walkthrough,
         list_shadow_trajectories,

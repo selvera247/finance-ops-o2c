@@ -65,9 +65,9 @@ python -m finance_ops.mcp
 
 Docs + Cursor config: [docs/mcp.md](docs/mcp.md) · `.cursor/mcp.json.example`
 
-## Sandboxed calc / Python (C7 A+B+D)
+## Sandboxed calc / Python (C7 A+B+D+C)
 
-Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (policy wall; no apply/HITL). Docs: [docs/sandbox.md](docs/sandbox.md). Container jail (C7-C) is follow-on.
+Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (policy wall; no apply/HITL). Optional Docker isolation: `bash scripts/build_sandbox_image.sh` then `FINANCE_OPS_SANDBOX_ISOLATION=container`. Docs: [docs/sandbox.md](docs/sandbox.md).
 
 ## Shadow trajectories (C3)
 
