@@ -1,0 +1,26 @@
+# Backlog (post master plan + parking lot)
+
+**As of:** 2026-10-21  
+
+## Production spike A — cash app
+
+| Item | Status |
+| --- | --- |
+| Sample + loader + HITL apply | **Done** (`data/spike_a`, `request_cash_app_approval`) |
+| Slack webhook on cash-app notify | Optional polish (`.env` + dotenv load) |
+| BigQuery load for Cloud Run | Optional (`load_spike_a.py --bigquery-only`) |
+| Spike B portal extract | Not started |
+
+## Agent Engineer craft
+
+| ID | Item | Status |
+| --- | --- | --- |
+| **C1** | **Read-only MCP** | **Done** — `python -m finance_ops.mcp` · [mcp.md](mcp.md) |
+| C3 | Shadow trajectories | Next |
+| C2 | 3-tier memory + eviction | Next |
+| C4–C6 | Context budget · sanitize · self-heal | Later |
+| C7 | Sandboxed code exec | Defer |
+
+## Hygiene
+
+Merge leftover doc branches · bootstrap sqlite · delete unused Agent Engine · revoke PATs · one-pager refresh.

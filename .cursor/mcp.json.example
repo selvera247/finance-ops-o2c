@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "finance_ops_readonly": {
+      "command": "REPLACE_WITH_REPO/.venv/Scripts/python.exe",
+      "args": ["-m", "finance_ops.mcp"],
+      "cwd": "REPLACE_WITH_REPO",
+      "env": {
+        "PYTHONPATH": "REPLACE_WITH_REPO",
+        "FINANCE_OPS_DATA_MODE": "warehouse"
+      }
+    }
+  }
+}
