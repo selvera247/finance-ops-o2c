@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from finance_ops.runtime.hitl import PendingApproval
+from finance_ops.runtime.sanitize import sanitize_for_export, sanitize_string
 
 _DOTENV_LOADED = False
 
@@ -57,42 +58,46 @@ def approval_links(approval: PendingApproval) -> dict[str, str]:
 
 def slack_message_blocks(approval: PendingApproval) -> list[dict[str, Any]]:
     links = approval_links(approval)
-    return [
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": f"HITL: {approval.kind}"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": (
-                    f"*{approval.summary}*\n"
-                    f"Amount: `${approval.amount:,.2f} {approval.currency}`\n"
-                    f"Id: `{approval.approval_id}` · status: `{approval.status}`"
-                ),
+    summary = sanitize_string(approval.summary or "", redact_accounts=True)
+    return sanitize_for_export(
+        [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"HITL: {approval.kind}"},
             },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Approve"},
-                    "style": "primary",
-                    "url": links["approve"],
-                    "action_id": "hitl_approve",
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{summary}*\n"
+                        f"Amount: `${approval.amount:,.2f} {approval.currency}`\n"
+                        f"Id: `{approval.approval_id}` · status: `{approval.status}`"
+                    ),
                 },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Reject"},
-                    "style": "danger",
-                    "url": links["reject"],
-                    "action_id": "hitl_reject",
-                },
-            ],
-        },
-    ]
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Approve"},
+                        "style": "primary",
+                        "url": links["approve"],
+                        "action_id": "hitl_approve",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Reject"},
+                        "style": "danger",
+                        "url": links["reject"],
+                        "action_id": "hitl_reject",
+                    },
+                ],
+            },
+        ],
+        redact_accounts=True,
+    )
 
 
 def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -126,9 +131,10 @@ def notify_slack(approval: PendingApproval) -> dict[str, Any]:
     bot = os.getenv("SLACK_BOT_TOKEN", "").strip()
     channel = os.getenv("SLACK_HITL_CHANNEL", "").strip()
     links = approval_links(approval)
-    text = (
+    text = sanitize_string(
         f"HITL approval needed: {approval.summary} "
-        f"(${approval.amount:,.2f}) — {approval.approval_id}"
+        f"(${approval.amount:,.2f}) — {approval.approval_id}",
+        redact_accounts=True,
     )
     blocks = slack_message_blocks(approval)
 

@@ -15,18 +15,18 @@
 
 | ID | Item | Status |
 | --- | --- | --- |
-| **C1** | **Read-only MCP** | **Done** |
+| **C1** | **Read-only MCP** | **Done** — `python -m finance_ops.mcp` · [mcp.md](mcp.md) |
 | **C7** | **Sandbox A+B+D+C** | **Done** — [sandbox.md](sandbox.md) |
-| **C3** | **Shadow trajectories** | **Done** |
-| **C2** | **3-tier memory** | **Done** |
-| **C4–C6** | Context budget · sanitize · self-heal | **Open on** `cursor/c4-c6-craft-a24d` — merge next |
+| **C3** | **Shadow trajectories** | **Done** — [shadow-trajectories.md](shadow-trajectories.md) |
+| **C2** | **3-tier memory + eviction** | **Done** — [memory.md](memory.md) |
+| **C4–C6** | **Context budget · sanitize · self-heal** | **Done** — [craft-c4-c6.md](craft-c4-c6.md) |
 
 ## Hygiene
 
 | Item | Status |
 | --- | --- |
 | Revoke chat-exposed PATs | Ongoing |
-| Delete merged `cursor/*` remotes | **Done** (kept only `cursor/c4-c6-craft-a24d`) |
+| Delete merged `cursor/*` remotes | **Done** (kept only open craft branches until merge) |
 | Slack `.env` load | **Done** |
 | One-pager refresh | **Done** |
 | Drop `cursor/backlog-a24d` | **Done** |

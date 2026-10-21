@@ -10,6 +10,12 @@ from finance_ops.specialists import (
     reconciliation_agent,
 )
 from finance_ops.tools.bigquery_tools import bigquery_status
+from finance_ops.tools.craft_tools import (
+    budget_pack_context,
+    heal_suggest_payment,
+    heal_tool_result,
+    sanitize_payload,
+)
 from finance_ops.tools.governance_tools import (
     flag_for_human_review,
     get_evidence,
@@ -20,6 +26,20 @@ from finance_ops.tools.gui_tools import (
     list_bank_statements,
     list_portal_extracts,
     process_portal_incoming,
+)
+from finance_ops.tools.memory_tools import (
+    memory_evict,
+    memory_get,
+    memory_list,
+    memory_promote,
+    memory_put,
+    memory_search,
+    memory_status,
+)
+from finance_ops.tools.portal_spike_tools import (
+    classify_portal_exception,
+    request_portal_extract_review,
+    spike_b_walkthrough,
 )
 from finance_ops.tools.rag_tools import search_policies
 from finance_ops.tools.runtime_tools import (
@@ -39,20 +59,6 @@ from finance_ops.tools.sandbox_tools import (
     run_sandboxed_calc,
     run_sandboxed_python,
     sandbox_status,
-)
-from finance_ops.tools.memory_tools import (
-    memory_evict,
-    memory_get,
-    memory_list,
-    memory_promote,
-    memory_put,
-    memory_search,
-    memory_status,
-)
-from finance_ops.tools.portal_spike_tools import (
-    classify_portal_exception,
-    request_portal_extract_review,
-    spike_b_walkthrough,
 )
 from finance_ops.tools.shadow_tools import (
     get_shadow_trajectory,
@@ -98,6 +104,9 @@ root_agent = Agent(
         "Memory (C2): working / episodic / long_term via memory_put/get/search/list; "
         "memory_promote upward; memory_evict / memory_status for caps. "
         "Use working for session scratch, episodic for turn notes, long_term for durable facts.\n"
+        "Craft C4–C6: budget_pack_context before stuffing large tool JSON into reasoning; "
+        "sanitize_payload to preview redaction; heal_suggest_payment / heal_tool_result on failures "
+        "(retry once, then needs_review — never invent balances).\n"
         "Always cite evidence_id. For write-offs say needs_review.\n"
         "Never invent balances."
     ),
@@ -140,6 +149,10 @@ root_agent = Agent(
         memory_promote,
         memory_evict,
         memory_status,
+        budget_pack_context,
+        sanitize_payload,
+        heal_tool_result,
+        heal_suggest_payment,
     ],
     sub_agents=[invoice_agent, payments_agent, contracts_agent, reconciliation_agent],
 )

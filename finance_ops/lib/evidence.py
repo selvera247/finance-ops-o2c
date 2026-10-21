@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from finance_ops.lib.paths import ensure_evidence_dir
+from finance_ops.runtime.sanitize import sanitize_for_export
 
 
 def record_evidence(
@@ -17,17 +18,24 @@ def record_evidence(
     sources: list[str],
 ) -> dict[str, Any]:
     evidence_id = f"EVD-{uuid.uuid4().hex[:12]}"
+    safe_inputs = sanitize_for_export(inputs)
+    safe_outputs = sanitize_for_export(outputs)
     record = {
         "evidence_id": evidence_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "agent": agent,
         "action": action,
-        "inputs": inputs,
-        "outputs": outputs,
+        "inputs": safe_inputs,
+        "outputs": safe_outputs,
         "sources": sources,
         "governance": {
-            "requires_human_review": outputs.get("needs_review", False),
+            "requires_human_review": bool(
+                (outputs or {}).get("needs_review", False)
+                if isinstance(outputs, dict)
+                else False
+            ),
             "citation_count": len(sources),
+            "sanitized": True,
         },
     }
     path = ensure_evidence_dir() / f"{evidence_id}.json"

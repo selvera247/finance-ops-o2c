@@ -85,6 +85,10 @@ Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (p
 
 Three-tier `working` / `episodic` / `long_term` with TTL + LRU eviction. Docs: [docs/memory.md](docs/memory.md).
 
+## Craft C4–C6
+
+Context budget · sanitize · self-heal. Docs: [docs/craft-c4-c6.md](docs/craft-c4-c6.md).
+
 ## Portfolio master layer (complete)
 
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)

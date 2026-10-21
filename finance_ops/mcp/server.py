@@ -28,7 +28,9 @@ def _load_dotenv() -> None:
 
 
 def _json(data: Any) -> str:
-    return json.dumps(data, indent=2, default=str)
+    from finance_ops.runtime.sanitize import sanitize_for_export
+
+    return json.dumps(sanitize_for_export(data), indent=2, default=str)
 
 
 def build_server() -> MCPServer:
