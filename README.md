@@ -73,6 +73,10 @@ Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (p
 
 `shadow_cash_app_trajectory` / `shadow_spike_a_walkthrough` propose HITL+apply without mutating. Docs: [docs/shadow-trajectories.md](docs/shadow-trajectories.md).
 
+## Memory (C2)
+
+Three-tier `working` / `episodic` / `long_term` with TTL + LRU eviction. Docs: [docs/memory.md](docs/memory.md).
+
 ## Portfolio master layer (complete)
 
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)

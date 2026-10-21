@@ -36,6 +36,15 @@ from finance_ops.tools.runtime_tools import (
     start_durable_reconcile,
 )
 from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
+from finance_ops.tools.memory_tools import (
+    memory_evict,
+    memory_get,
+    memory_list,
+    memory_promote,
+    memory_put,
+    memory_search,
+    memory_status,
+)
 from finance_ops.tools.shadow_tools import (
     get_shadow_trajectory,
     list_shadow_trajectories,
@@ -71,6 +80,9 @@ root_agent = Agent(
         "they cannot apply matches or call write tools — use HITL for mutations.\n"
         "Shadow (C3): shadow_cash_app_trajectory / shadow_spike_a_walkthrough propose "
         "HITL+apply without mutating; list/get_shadow_trajectory to inspect.\n"
+        "Memory (C2): working / episodic / long_term via memory_put/get/search/list; "
+        "memory_promote upward; memory_evict / memory_status for caps. "
+        "Use working for session scratch, episodic for turn notes, long_term for durable facts.\n"
         "Always cite evidence_id. For write-offs say needs_review.\n"
         "Never invent balances."
     ),
@@ -101,6 +113,13 @@ root_agent = Agent(
         shadow_spike_a_walkthrough,
         list_shadow_trajectories,
         get_shadow_trajectory,
+        memory_put,
+        memory_get,
+        memory_search,
+        memory_list,
+        memory_promote,
+        memory_evict,
+        memory_status,
     ],
     sub_agents=[invoice_agent, payments_agent, contracts_agent, reconciliation_agent],
 )
