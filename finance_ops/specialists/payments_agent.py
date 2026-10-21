@@ -10,6 +10,12 @@ from finance_ops.tools.payment_tools import (
     request_cash_app_approval,
     suggest_payment_match,
 )
+from finance_ops.tools.memory_tools import (
+    memory_get,
+    memory_promote,
+    memory_put,
+    memory_search,
+)
 from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
 from finance_ops.tools.shadow_tools import (
     get_shadow_trajectory,
@@ -28,6 +34,8 @@ payments_agent = Agent(
         "(Slack/HITL); do not call apply_payment_match unless ops explicitly bypasses HITL. "
         "Shadow (C3): shadow_cash_app_trajectory or shadow_spike_a_walkthrough to record "
         "what would happen without HITL/apply/Slack — prefer for dry demos. "
+        "Memory (C2): memory_put working notes per payment; promote to episodic/long_term "
+        "when a match pattern is durable; memory_get/search before re-suggesting. "
         "For amount tolerances / remittance math use run_sandboxed_calc or run_sandboxed_python "
         "(returns numbers only — never applies matches). "
         "Cite payment_id and evidence_id."
@@ -44,5 +52,9 @@ payments_agent = Agent(
         shadow_spike_a_walkthrough,
         list_shadow_trajectories,
         get_shadow_trajectory,
+        memory_put,
+        memory_get,
+        memory_search,
+        memory_promote,
     ],
 )
