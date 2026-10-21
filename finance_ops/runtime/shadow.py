@@ -269,6 +269,103 @@ def build_cash_app_shadow(
 
 
 SPIKE_A_WALKTHROUGH = ("PAY-1001", "PAY-2001", "PAY-3001")
+SPIKE_B_WALKTHROUGH = ("CLM-B1001", "CLM-B2001", "CLM-B3001")
+
+
+def build_portal_extract_shadow(
+    claim_id: str,
+    *,
+    store: ShadowStore | None = None,
+) -> ShadowTrajectory:
+    """Read classify → propose HITL review. Never creates approvals."""
+    from finance_ops.tools.portal_spike_tools import classify_portal_exception
+
+    store = store or DEFAULT_SHADOW
+    claim_id = claim_id.strip().upper()
+    traj = store.create(kind="portal_extract", meta={"claim_id": claim_id, "mode": "shadow"})
+
+    classified = classify_portal_exception(claim_id)
+    store.append(
+        traj.trajectory_id,
+        tool="classify_portal_exception",
+        args={"claim_id": claim_id},
+        side_effect="read_ok",
+        status=classified.get("status", "unknown"),
+        summary=(
+            f"disposition={classified.get('disposition')} "
+            f"kind={classified.get('hitl_kind')}"
+        ),
+        outputs={
+            "disposition": classified.get("disposition"),
+            "hitl_kind": classified.get("hitl_kind"),
+            "suggested_invoice_ids": classified.get("suggested_invoice_ids"),
+            "amount": classified.get("amount"),
+        },
+    )
+    if classified.get("status") != "success":
+        return store.close(traj.trajectory_id, note="classify failed; no HITL proposal")
+
+    store.append(
+        traj.trajectory_id,
+        tool="request_portal_extract_review",
+        args={"claim_id": claim_id, "notify_slack": True},
+        side_effect="shadow_skipped",
+        status="proposed",
+        summary=f"would create HITL kind={classified.get('hitl_kind')}",
+        outputs={
+            "would_create_approval": {
+                "kind": classified.get("hitl_kind"),
+                "amount": classified.get("amount"),
+                "summary": f"Portal extract {claim_id}: {classified.get('disposition')}",
+                "payload": {
+                    "claim_id": claim_id,
+                    "disposition": classified.get("disposition"),
+                    "suggested_invoice_ids": classified.get("suggested_invoice_ids"),
+                },
+            }
+        },
+    )
+    return store.close(traj.trajectory_id, note="shadow complete — HITL unchanged")
+
+
+def build_spike_b_shadow_bundle(
+    claim_ids: tuple[str, ...] | list[str] = SPIKE_B_WALKTHROUGH,
+    *,
+    store: ShadowStore | None = None,
+) -> dict[str, Any]:
+    store = store or DEFAULT_SHADOW
+    bundle_id = f"SHB-{uuid.uuid4().hex[:10]}"
+    children: list[dict[str, Any]] = []
+    for cid in claim_ids:
+        traj = build_portal_extract_shadow(cid, store=store)
+        children.append(
+            {
+                "claim_id": cid,
+                "trajectory_id": traj.trajectory_id,
+                "would_mutate": traj.would_mutate,
+                "steps": len(traj.steps),
+                "disposition": next(
+                    (
+                        s.outputs.get("disposition")
+                        for s in traj.steps
+                        if s.tool == "classify_portal_exception"
+                    ),
+                    None,
+                ),
+            }
+        )
+    bundle = {
+        "bundle_id": bundle_id,
+        "kind": "spike_b_walkthrough",
+        "created_at": _now(),
+        "trajectories": children,
+        "mutated": False,
+    }
+    path = store.root / f"{bundle_id}.json"
+    path.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
+    bundle["path"] = str(path)
+    return bundle
+
 
 
 def build_spike_a_shadow_bundle(

@@ -52,7 +52,15 @@ Run typed A2A aging for CUST-ACME.
 Start durable reconcile without browser.
 ```
 
-Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.
+### Spike B (payer remittance exceptions)
+
+```powershell
+python scripts\load_spike_b.py
+# then: spike_b_walkthrough / classify_portal_exception CLM-B1001 /
+# request_portal_extract_review / shadow_spike_b_walkthrough
+```
+
+Docs: [data/spike_b/README.md](data/spike_b/README.md). Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.
 
 See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/#8/#1/#5/#12).
 
@@ -65,9 +73,9 @@ python -m finance_ops.mcp
 
 Docs + Cursor config: [docs/mcp.md](docs/mcp.md) · `.cursor/mcp.json.example`
 
-## Sandboxed calc / Python (C7 A+B+D)
+## Sandboxed calc / Python (C7 A+B+D+C)
 
-Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (policy wall; no apply/HITL). Docs: [docs/sandbox.md](docs/sandbox.md). Container jail (C7-C) is follow-on.
+Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (policy wall; no apply/HITL). Optional Docker isolation: `bash scripts/build_sandbox_image.sh` then `FINANCE_OPS_SANDBOX_ISOLATION=container`. Docs: [docs/sandbox.md](docs/sandbox.md).
 
 ## Shadow trajectories (C3)
 
