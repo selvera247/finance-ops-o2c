@@ -35,6 +35,7 @@ from finance_ops.tools.runtime_tools import (
     run_typed_a2a_aging,
     start_durable_reconcile,
 )
+from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
 
 root_agent = Agent(
     model=default_model(),
@@ -60,6 +61,8 @@ root_agent = Agent(
         "Durable: start_durable_reconcile / resume_durable_workflow for multi-step DAG.\n"
         "Typed A2A: run_typed_a2a_aging for structured invoice specialist handoffs.\n"
         "Circuit: circuit_status if tools fail with circuit_open.\n"
+        "Sandbox: run_sandboxed_calc / run_sandboxed_python for formulas only; "
+        "they cannot apply matches or call write tools — use HITL for mutations.\n"
         "Always cite evidence_id. For write-offs say needs_review.\n"
         "Never invent balances."
     ),
@@ -84,6 +87,8 @@ root_agent = Agent(
         run_typed_a2a_aging,
         circuit_status,
         reset_circuit_breaker,
+        run_sandboxed_calc,
+        run_sandboxed_python,
     ],
     sub_agents=[invoice_agent, payments_agent, contracts_agent, reconciliation_agent],
 )
