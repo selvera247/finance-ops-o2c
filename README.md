@@ -65,6 +65,10 @@ python -m finance_ops.mcp
 
 Docs + Cursor config: [docs/mcp.md](docs/mcp.md) · `.cursor/mcp.json.example`
 
+## Sandboxed calc / Python (C7 A+B+D)
+
+Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (policy wall; no apply/HITL). Docs: [docs/sandbox.md](docs/sandbox.md). Container jail (C7-C) is follow-on.
+
 ## Portfolio master layer (complete)
 
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)

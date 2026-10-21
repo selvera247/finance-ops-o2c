@@ -16,10 +16,10 @@
 | ID | Item | Status |
 | --- | --- | --- |
 | **C1** | **Read-only MCP** | **Done** — `python -m finance_ops.mcp` · [mcp.md](mcp.md) |
+| **C7** | **Sandboxed code exec (A+B+D)** | **Done** — [sandbox.md](sandbox.md); **C7-C** containers later |
 | C3 | Shadow trajectories | Next |
 | C2 | 3-tier memory + eviction | Next |
 | C4–C6 | Context budget · sanitize · self-heal | Later |
-| C7 | Sandboxed code exec | Defer |
 
 ## Hygiene
 

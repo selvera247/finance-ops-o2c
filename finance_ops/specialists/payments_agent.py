@@ -10,6 +10,7 @@ from finance_ops.tools.payment_tools import (
     request_cash_app_approval,
     suggest_payment_match,
 )
+from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
 
 payments_agent = Agent(
     model=default_model(),
@@ -19,6 +20,8 @@ payments_agent = Agent(
         "Payments specialist. Treat matches as needs_review unless already matched. "
         "For cash app: suggest_payment_match then request_cash_app_approval "
         "(Slack/HITL); do not call apply_payment_match unless ops explicitly bypasses HITL. "
+        "For amount tolerances / remittance math use run_sandboxed_calc or run_sandboxed_python "
+        "(returns numbers only — never applies matches). "
         "Cite payment_id and evidence_id."
     ),
     tools=[
@@ -27,5 +30,7 @@ payments_agent = Agent(
         suggest_payment_match,
         request_cash_app_approval,
         apply_payment_match,
+        run_sandboxed_calc,
+        run_sandboxed_python,
     ],
 )
