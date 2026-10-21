@@ -13,12 +13,32 @@ import json
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from finance_ops.runtime.hitl import PendingApproval
 
+_DOTENV_LOADED = False
+
+
+def _ensure_dotenv() -> None:
+    """Load finance_ops/.env and repo .env so CLI one-liners see Slack vars."""
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    _DOTENV_LOADED = True
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    root = Path(__file__).resolve().parents[2]
+    for path in (root / "finance_ops" / ".env", root / ".env"):
+        if path.is_file():
+            load_dotenv(path, override=False)
+
 
 def hitl_public_base() -> str:
+    _ensure_dotenv()
     return os.getenv("HITL_PUBLIC_BASE_URL", "http://127.0.0.1:8787").rstrip("/")
 
 
@@ -101,6 +121,7 @@ def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str] | None
 
 def notify_slack(approval: PendingApproval) -> dict[str, Any]:
     """Post approval card to Slack if webhook or bot token configured."""
+    _ensure_dotenv()
     webhook = os.getenv("SLACK_WEBHOOK_URL", "").strip()
     bot = os.getenv("SLACK_BOT_TOKEN", "").strip()
     channel = os.getenv("SLACK_HITL_CHANNEL", "").strip()
