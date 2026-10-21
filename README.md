@@ -69,6 +69,10 @@ Docs + Cursor config: [docs/mcp.md](docs/mcp.md) · `.cursor/mcp.json.example`
 
 Agent tools `run_sandboxed_calc` / `run_sandboxed_python` return numbers only (policy wall; no apply/HITL). Docs: [docs/sandbox.md](docs/sandbox.md). Container jail (C7-C) is follow-on.
 
+## Shadow trajectories (C3)
+
+`shadow_cash_app_trajectory` / `shadow_spike_a_walkthrough` propose HITL+apply without mutating. Docs: [docs/shadow-trajectories.md](docs/shadow-trajectories.md).
+
 ## Portfolio master layer (complete)
 
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)

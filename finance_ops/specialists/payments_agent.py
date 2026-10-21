@@ -11,6 +11,12 @@ from finance_ops.tools.payment_tools import (
     suggest_payment_match,
 )
 from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
+from finance_ops.tools.shadow_tools import (
+    get_shadow_trajectory,
+    list_shadow_trajectories,
+    shadow_cash_app_trajectory,
+    shadow_spike_a_walkthrough,
+)
 
 payments_agent = Agent(
     model=default_model(),
@@ -20,6 +26,8 @@ payments_agent = Agent(
         "Payments specialist. Treat matches as needs_review unless already matched. "
         "For cash app: suggest_payment_match then request_cash_app_approval "
         "(Slack/HITL); do not call apply_payment_match unless ops explicitly bypasses HITL. "
+        "Shadow (C3): shadow_cash_app_trajectory or shadow_spike_a_walkthrough to record "
+        "what would happen without HITL/apply/Slack — prefer for dry demos. "
         "For amount tolerances / remittance math use run_sandboxed_calc or run_sandboxed_python "
         "(returns numbers only — never applies matches). "
         "Cite payment_id and evidence_id."
@@ -32,5 +40,9 @@ payments_agent = Agent(
         apply_payment_match,
         run_sandboxed_calc,
         run_sandboxed_python,
+        shadow_cash_app_trajectory,
+        shadow_spike_a_walkthrough,
+        list_shadow_trajectories,
+        get_shadow_trajectory,
     ],
 )

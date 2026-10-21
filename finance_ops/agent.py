@@ -36,6 +36,12 @@ from finance_ops.tools.runtime_tools import (
     start_durable_reconcile,
 )
 from finance_ops.tools.sandbox_tools import run_sandboxed_calc, run_sandboxed_python
+from finance_ops.tools.shadow_tools import (
+    get_shadow_trajectory,
+    list_shadow_trajectories,
+    shadow_cash_app_trajectory,
+    shadow_spike_a_walkthrough,
+)
 
 root_agent = Agent(
     model=default_model(),
@@ -63,6 +69,8 @@ root_agent = Agent(
         "Circuit: circuit_status if tools fail with circuit_open.\n"
         "Sandbox: run_sandboxed_calc / run_sandboxed_python for formulas only; "
         "they cannot apply matches or call write tools — use HITL for mutations.\n"
+        "Shadow (C3): shadow_cash_app_trajectory / shadow_spike_a_walkthrough propose "
+        "HITL+apply without mutating; list/get_shadow_trajectory to inspect.\n"
         "Always cite evidence_id. For write-offs say needs_review.\n"
         "Never invent balances."
     ),
@@ -89,6 +97,10 @@ root_agent = Agent(
         reset_circuit_breaker,
         run_sandboxed_calc,
         run_sandboxed_python,
+        shadow_cash_app_trajectory,
+        shadow_spike_a_walkthrough,
+        list_shadow_trajectories,
+        get_shadow_trajectory,
     ],
     sub_agents=[invoice_agent, payments_agent, contracts_agent, reconciliation_agent],
 )
