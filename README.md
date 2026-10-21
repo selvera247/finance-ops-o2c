@@ -56,6 +56,15 @@ Canonical table: `portal_extracts`. Drop zones: `data/incoming/<portal_id>/`.
 
 See [docs/runtime-gaps.md](docs/runtime-gaps.md) for checklist mapping (#11/#10/#8/#1/#5/#12).
 
+## Read-only MCP (Cursor / Claude)
+
+```powershell
+$env:PYTHONPATH = (Get-Location).Path
+python -m finance_ops.mcp
+```
+
+Docs + Cursor config: [docs/mcp.md](docs/mcp.md) · `.cursor/mcp.json.example`
+
 ## Portfolio master layer (complete)
 
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)
