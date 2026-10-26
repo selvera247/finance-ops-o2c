@@ -11,6 +11,8 @@ from finance_ops.governance.callbacks import before_tool_rbac
 from finance_ops.governance import rbac
 from finance_ops.governance.rbac import (
     APPROVAL_MUTATING_TOOLS,
+    HUBSPOT_READ_TOOLS,
+    HUBSPOT_WRITE_TOOLS,
     PAYMENT_TOOLS,
     is_tool_allowed,
 )
@@ -118,3 +120,39 @@ def test_registered_tools_match_allowlist() -> None:
 
 def test_args_hash_stable() -> None:
     assert args_hash({"a": 1, "b": 2}) == args_hash({"b": 2, "a": 1})
+
+
+def test_hubspot_read_allowed_on_invoice_contracts_reconciliation() -> None:
+    for agent in ("invoice_agent", "contracts_agent", "reconciliation_agent"):
+        for tool in sorted(HUBSPOT_READ_TOOLS):
+            ok, reason = is_tool_allowed(agent, tool)
+            assert ok is True, f"{agent}.{tool}: {reason}"
+
+
+def test_hubspot_denied_on_coordinator_and_payments() -> None:
+    for agent in ("finance_ops_coordinator", "payments_agent"):
+        for tool in sorted(HUBSPOT_READ_TOOLS | HUBSPOT_WRITE_TOOLS):
+            ok, reason = is_tool_allowed(agent, tool)
+            assert ok is False, f"{agent}.{tool} should be denied"
+            assert reason in {
+                "hubspot_denied_for_agent",
+                "tool_not_in_allowlist",
+            }, reason
+
+
+def test_hubspot_write_never_llm_allowlisted() -> None:
+    for agent in (
+        "invoice_agent",
+        "contracts_agent",
+        "reconciliation_agent",
+        "finance_ops_coordinator",
+        "payments_agent",
+    ):
+        for tool in sorted(HUBSPOT_WRITE_TOOLS):
+            ok, reason = is_tool_allowed(agent, tool)
+            assert ok is False, f"{agent}.{tool}"
+            assert reason in {
+                "hubspot_write_runtime_only",
+                "hubspot_denied_for_agent",
+                "tool_not_in_allowlist",
+            }

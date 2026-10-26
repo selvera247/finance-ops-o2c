@@ -89,6 +89,28 @@ Three-tier `working` / `episodic` / `long_term` with TTL + LRU eviction. Docs: [
 
 Context budget · sanitize · self-heal. Docs: [docs/craft-c4-c6.md](docs/craft-c4-c6.md).
 
+## HubSpot (read-mostly CRM context)
+
+Private-app token via env only (`HUBSPOT_ACCESS_TOKEN`). **Never log or commit the token.**
+
+Minimal scopes (granular CRM):
+
+| Scope | Why |
+| --- | --- |
+| `crm.objects.companies.read` | Account context |
+| `crm.objects.deals.read` | Closed-won / stage |
+| `crm.objects.line_items.read` | Sold vs contracted |
+| `crm.objects.tickets.read` | Open tickets on aging |
+| `crm.objects.contacts.write` *(or engagements write as required for tasks/notes)* | HITL task/note create only |
+
+RBAC: **invoice / contracts / reconciliation** get HubSpot **read** tools. Coordinator and payments get **neither**. Write (`create_task` / `create_note`) is runtime/HITL-only, not LLM-allowlisted.
+
+```powershell
+# finance_ops/.env
+HUBSPOT_ACCESS_TOKEN=pat-...
+HUBSPOT_CLIENT_SECRET=...   # webhook signature (later)
+```
+
 ## Portfolio master layer (complete)
 
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)
