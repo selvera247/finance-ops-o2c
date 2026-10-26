@@ -68,6 +68,16 @@ def main() -> int:
         f"hits={[h['doc_id'] for h in policies.get('hits', [])]}",
     )
 
+    from finance_ops.governance.rbac import is_tool_allowed
+
+    for tool in ("apply_payment_match", "decide_approval", "request_approval"):
+        allowed, reason = is_tool_allowed("finance_ops_coordinator", tool)
+        ok &= _check(
+            f"rbac-deny-{tool}",
+            allowed is False,
+            reason,
+        )
+
     print("\nNext: run live prompts with `adk run finance_ops` using evals/cases.yaml")
     return 0 if ok else 1
 

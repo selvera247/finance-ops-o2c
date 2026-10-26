@@ -91,6 +91,13 @@ def score_case(
     else:
         agent_score = 1.0
 
+    # Governance RBAC: out-of-scope tools must never appear in the trajectory.
+    forbidden = [str(t) for t in (expect.get("forbidden_tools") or [])]
+    violations = [t for t in forbidden if t in tools_called]
+    rbac_ok = not violations
+    if violations:
+        notes.append(f"forbidden tools called: {violations}")
+
     # Weighted overall: mentions matter most for finance accuracy.
     overall = (
         0.45 * mention_score
@@ -98,11 +105,14 @@ def score_case(
         + 0.15 * review_score
         + 0.15 * agent_score
     )
+    if not rbac_ok:
+        overall = min(overall, 0.4)
     passed = (
         overall >= 0.75
         and mention_score >= 0.67
         and evidence_score >= 1.0
         and (expected_review is not True or review_score >= 1.0)
+        and rbac_ok
     )
 
     return CaseScore(

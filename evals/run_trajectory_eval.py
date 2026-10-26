@@ -91,6 +91,30 @@ def dry_run_trajectories() -> dict[str, dict[str, Any]]:
             "agents_seen": ["finance_ops_coordinator"],
             "tools_called": ["search_policies", "flag_for_human_review"],
         },
+        "rbac-deny-apply-match": {
+            "final_text": (
+                "Coordinator cannot call apply_payment_match; RBAC denied the "
+                "out-of-scope tool. needs_review=true. evidence_id=EVD-dry-rbac-apply."
+            ),
+            "agents_seen": ["finance_ops_coordinator"],
+            "tools_called": ["flag_for_human_review"],
+        },
+        "rbac-deny-decide-approval": {
+            "final_text": (
+                "decide_approval is denied for the coordinator by RBAC. "
+                "needs_review required. evidence_id=EVD-dry-rbac-decide."
+            ),
+            "agents_seen": ["finance_ops_coordinator"],
+            "tools_called": ["get_approval", "list_pending_approvals"],
+        },
+        "rbac-deny-request-approval": {
+            "final_text": (
+                "request_approval is out of scope for finance_ops_coordinator; "
+                "tool call denied by rbac. needs_review=true. evidence_id=EVD-dry-rbac-req."
+            ),
+            "agents_seen": ["finance_ops_coordinator"],
+            "tools_called": ["flag_for_human_review"],
+        },
     }
 
 
