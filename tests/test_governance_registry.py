@@ -170,3 +170,59 @@ def test_agents_have_lifecycle_callbacks() -> None:
     assert root_agent.before_agent_callback is before_agent_registry
     assert root_agent.after_agent_callback is after_agent_registry
     assert invoice_agent.before_agent_callback is before_agent_registry
+
+
+def test_fail_closed_missing_registry_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FINANCE_OPS_REGISTRY_PATH", str(tmp_path / "missing.yaml"))
+    monkeypatch.setattr(
+        "finance_ops.governance.registry.WAREHOUSE_DIR",
+        tmp_path / "wh",
+    )
+    ok, reason = is_invocation_allowed("invoice_agent")
+    assert ok is False
+    assert "registry_unavailable" in reason
+
+
+def test_fail_closed_corrupt_registry_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seed = tmp_path / "registry.yaml"
+    seed.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "agents": [{"name": "invoice_agent", "owner": "t", "status": "active"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("FINANCE_OPS_REGISTRY_PATH", str(seed))
+    wh = tmp_path / "wh"
+    monkeypatch.setattr("finance_ops.governance.registry.WAREHOUSE_DIR", wh)
+    # Prime a valid state, then corrupt it
+    load_registry()
+    state_path().write_text("{not-json", encoding="utf-8")
+    ok, reason = is_invocation_allowed("invoice_agent")
+    assert ok is False
+    assert "registry_unavailable" in reason
+
+
+def test_sweep_http_requires_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from finance_ops.serving import app
+
+    client = TestClient(app)
+    monkeypatch.delenv("FINANCE_OPS_GOVERNANCE_TOKEN", raising=False)
+    assert client.post("/v1/governance/sweep").status_code == 503
+
+    monkeypatch.setenv("FINANCE_OPS_GOVERNANCE_TOKEN", "secret-sweep-token")
+    assert client.post("/v1/governance/sweep").status_code == 401
+    ok = client.post(
+        "/v1/governance/sweep",
+        headers={"X-Governance-Token": "secret-sweep-token"},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["status"] == "success"

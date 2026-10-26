@@ -8,13 +8,34 @@ Cloud Run sets PORT; see deploy/entrypoint.sh.
 
 from __future__ import annotations
 
+import hmac
 import os
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="finance_ops", version="0.4.0")
+
+
+def _require_governance_token(
+    authorization: str | None = None,
+    x_governance_token: str | None = None,
+) -> None:
+    """Fail closed: sweep/revoke HTTP routes need FINANCE_OPS_GOVERNANCE_TOKEN."""
+    expected = os.getenv("FINANCE_OPS_GOVERNANCE_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="governance token not configured (FINANCE_OPS_GOVERNANCE_TOKEN)",
+        )
+    provided = (x_governance_token or "").strip()
+    if not provided and authorization:
+        auth = authorization.strip()
+        if auth.lower().startswith("bearer "):
+            provided = auth[7:].strip()
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="unauthorized governance call")
 
 
 class SearchBody(BaseModel):
@@ -135,15 +156,27 @@ def api_bootstrap() -> dict[str, Any]:
 
 
 @app.post("/v1/governance/sweep")
-def api_governance_sweep() -> dict[str, Any]:
-    """Cloud Scheduler target: TTL + eval lifecycle sweep (retire / deprecate / revoke)."""
+def api_governance_sweep(
+    authorization: str | None = Header(default=None),
+    x_governance_token: str | None = Header(default=None, alias="X-Governance-Token"),
+) -> dict[str, Any]:
+    """Cloud Scheduler target: TTL + eval lifecycle sweep (retire / deprecate / revoke).
+
+    Auth required — not an agent tool. Send `Authorization: Bearer <token>` or
+    `X-Governance-Token` matching FINANCE_OPS_GOVERNANCE_TOKEN.
+    """
+    _require_governance_token(authorization, x_governance_token)
     from finance_ops.governance.registry import sweep_lifecycle
 
     return sweep_lifecycle()
 
 
 @app.get("/v1/governance/agents")
-def api_governance_agents() -> dict[str, Any]:
+def api_governance_agents(
+    authorization: str | None = Header(default=None),
+    x_governance_token: str | None = Header(default=None, alias="X-Governance-Token"),
+) -> dict[str, Any]:
+    _require_governance_token(authorization, x_governance_token)
     from finance_ops.governance.registry import list_agents
 
     return {"status": "success", "agents": list_agents(), "needs_review": False}

@@ -99,6 +99,18 @@ def test_fail_closed_missing_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "policy_unavailable" in d.reason
 
 
+def test_fail_closed_corrupt_policy_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "bad.yaml"
+    path.write_text("thresholds: [\n  this is not valid: [", encoding="utf-8")
+    monkeypatch.setenv("FINANCE_OPS_POLICY_PATH", str(path))
+    clear_policy_cache()
+    d = requires_approval("write_off", 1.0, audit=False)
+    assert d.denied
+    assert "policy_unavailable" in d.reason
+
+
 def test_env_override_deny_above(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "policy.yaml"
     _write_policy(path, deny_above=1_000_000)
