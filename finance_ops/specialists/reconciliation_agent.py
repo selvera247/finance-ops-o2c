@@ -15,6 +15,7 @@ from finance_ops.tools.hubspot_tools import (
     get_deal_line_items,
     get_open_tickets_for_company,
     list_closed_won_deals,
+    match_hubspot_company,
 )
 from finance_ops.tools.payment_tools import suggest_payment_match
 from finance_ops.tools.rag_tools import search_policies
@@ -25,8 +26,8 @@ reconciliation_agent = Agent(
     description="Specialist for knowledge-graph reconciliation and GraphRAG walks.",
     instruction=(
         "Explain entity hop paths. Cite ids and evidence_id. Flag ambiguity for review. "
-        "HubSpot companies are an entity source — surface duplicate candidates for human "
-        "confirmation; never auto-merge CRM records."
+        "Use match_hubspot_company for domain/name/external-id candidates; "
+        "duplicates → needs_review; never auto-merge CRM records."
     ),
     tools=[
         get_entity,
@@ -39,6 +40,7 @@ reconciliation_agent = Agent(
         list_closed_won_deals,
         get_deal_line_items,
         get_open_tickets_for_company,
+        match_hubspot_company,
     ],
     before_tool_callback=before_tool_rbac,
     before_agent_callback=before_agent_registry,

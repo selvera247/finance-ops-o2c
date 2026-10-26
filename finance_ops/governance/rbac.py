@@ -37,6 +37,9 @@ HUBSPOT_READ_TOOLS: frozenset[str] = frozenset(
         "list_closed_won_deals",
         "get_deal_line_items",
         "get_open_tickets_for_company",
+        "compare_sold_contracted_invoiced",
+        "enrich_aging_hubspot",
+        "match_hubspot_company",
     }
 )
 HUBSPOT_WRITE_TOOLS: frozenset[str] = frozenset(
@@ -102,7 +105,13 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "list_open_invoices",
             "aging_summary",
             "lookup_customer_risk",
-            *HUBSPOT_READ_TOOLS,
+            # HubSpot reads used for aging enrichment (D4); compare/match unused here
+            "get_company",
+            "get_deal",
+            "list_closed_won_deals",
+            "get_deal_line_items",
+            "get_open_tickets_for_company",
+            "enrich_aging_hubspot",
         }
     ),
     "payments_agent": frozenset(
@@ -136,7 +145,12 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
         {
             "lookup_contract",
             "lookup_customer_contract",
-            *HUBSPOT_READ_TOOLS,
+            "get_company",
+            "get_deal",
+            "list_closed_won_deals",
+            "get_deal_line_items",
+            "get_open_tickets_for_company",
+            "compare_sold_contracted_invoiced",
         }
     ),
     "reconciliation_agent": frozenset(
@@ -146,7 +160,12 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "graph_status",
             "search_policies",
             "suggest_payment_match",
-            *HUBSPOT_READ_TOOLS,
+            "get_company",
+            "get_deal",
+            "list_closed_won_deals",
+            "get_deal_line_items",
+            "get_open_tickets_for_company",
+            "match_hubspot_company",
         }
     ),
 }

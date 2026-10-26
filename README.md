@@ -103,12 +103,15 @@ Minimal scopes (granular CRM):
 | `crm.objects.tickets.read` | Open tickets on aging |
 | `crm.objects.contacts.write` *(or engagements write as required for tasks/notes)* | HITL task/note create only |
 
-RBAC: **invoice / contracts / reconciliation** get HubSpot **read** tools. Coordinator and payments get **neither**. Write (`create_task` / `create_note`) is runtime/HITL-only, not LLM-allowlisted.
+RBAC: **invoice / contracts / reconciliation** get HubSpot **read** tools (scoped composites: `enrich_aging_hubspot`, `compare_sold_contracted_invoiced`, `match_hubspot_company`). Coordinator and payments get **neither**. Write (`create_task` / `create_note`) is runtime/HITL-only, not LLM-allowlisted.
+
+Also: HITL → HubSpot task handoff (soft-fail), `POST /v1/hubspot/webhook` (v3 signature + 5‑min replay; durable run `WF-HS-DEAL-{id}`), email/phone masking + note injection scrub in sanitize.
 
 ```powershell
 # finance_ops/.env
 HUBSPOT_ACCESS_TOKEN=pat-...
-HUBSPOT_CLIENT_SECRET=...   # webhook signature (later)
+HUBSPOT_CLIENT_SECRET=...   # webhook v3 signature
+HITL_PUBLIC_BASE_URL=https://your-public-host   # signed webhook URI base
 ```
 
 ## Portfolio master layer (complete)

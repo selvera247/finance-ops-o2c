@@ -52,7 +52,19 @@ def append_audit(
         "reason": reason,
     }
     if extra:
-        record["extra"] = extra
+        try:
+            from finance_ops.runtime.sanitize import sanitize_for_export
+
+            record["extra"] = sanitize_for_export(extra)
+        except Exception:  # noqa: BLE001
+            record["extra"] = extra
+    if args:
+        try:
+            from finance_ops.runtime.sanitize import sanitize_for_export
+
+            record["args_safe"] = sanitize_for_export(args)
+        except Exception:  # noqa: BLE001
+            pass
     try:
         path = audit_path()
         with path.open("a", encoding="utf-8") as fh:

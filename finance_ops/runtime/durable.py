@@ -178,3 +178,47 @@ def portal_reconcile_handlers() -> dict[str, StepFn]:
         "resolve_portal": step_resolve,
         "reconcile_smoke": step_reconcile_smoke,
     }
+
+
+def deal_closed_won_handlers() -> dict[str, StepFn]:
+    """D7 DAG keyed by HubSpot deal id: fetch deal → line items → flag review."""
+
+    def step_fetch_deal(state: WorkflowState) -> dict[str, Any]:
+        from finance_ops.tools.hubspot_tools import get_deal
+
+        deal_id = str(state.meta.get("hubspot_deal_id") or "")
+        out = get_deal(deal_id)
+        if out.get("status") != "success":
+            raise RuntimeError(out.get("error") or "hubspot_get_deal_failed")
+        state.meta["deal"] = out.get("deal") or {}
+        return {"deal_id": deal_id, "status": out.get("status")}
+
+    def step_line_items(state: WorkflowState) -> dict[str, Any]:
+        from finance_ops.tools.hubspot_tools import get_deal_line_items
+
+        deal_id = str(state.meta.get("hubspot_deal_id") or "")
+        out = get_deal_line_items(deal_id)
+        if out.get("status") not in {"success", "denied"}:
+            # denied (no token) soft-records; other errors retry
+            if out.get("status") == "error":
+                raise RuntimeError(out.get("error") or "line_items_failed")
+        state.meta["line_items"] = out.get("line_items") or []
+        return {"count": out.get("count", 0), "status": out.get("status")}
+
+    def step_flag_review(state: WorkflowState) -> dict[str, Any]:
+        deal = state.meta.get("deal") or {}
+        props = deal.get("properties") if isinstance(deal, dict) else {}
+        amount = props.get("amount") if isinstance(props, dict) else None
+        return {
+            "needs_review": True,
+            "reason": "hubspot_deal_closed_won_review",
+            "deal_id": state.meta.get("hubspot_deal_id"),
+            "amount": amount,
+            "line_item_count": len(state.meta.get("line_items") or []),
+        }
+
+    return {
+        "fetch_deal": step_fetch_deal,
+        "fetch_line_items": step_line_items,
+        "flag_review": step_flag_review,
+    }

@@ -35,3 +35,6 @@ actions:
     default: require_human
   human_review:
     default: require_human
+  # D6 — HubSpot task after HITL (runtime helper; soft-fail on CRM errors)
+  hubspot_task_handoff:
+    default: allow
