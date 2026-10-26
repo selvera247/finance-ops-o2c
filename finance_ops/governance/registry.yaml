@@ -1,0 +1,43 @@
+# Agent registry seed (D3). Runtime state merges into .warehouse/governance/registry.json.
+# Override seed path via FINANCE_OPS_REGISTRY_PATH.
+
+version: 1
+default_ttl_days: 90
+default_eval_threshold: 0.8
+
+agents:
+  - name: finance_ops_coordinator
+    owner: platform
+    ttl_days: 90
+    eval_threshold: 0.8
+    status: active
+    latest_eval_score: 1.0
+
+  - name: invoice_agent
+    owner: ar-ops
+    ttl_days: 90
+    eval_threshold: 0.8
+    status: active
+    latest_eval_score: 1.0
+
+  - name: payments_agent
+    owner: cash-app
+    ttl_days: 90
+    eval_threshold: 0.8
+    status: active
+    latest_eval_score: 1.0
+
+  - name: contracts_agent
+    owner: commercial
+    ttl_days: 90
+    eval_threshold: 0.8
+    status: active
+    latest_eval_score: 1.0
+
+  - name: reconciliation_agent
+    owner: ar-ops
+    # Periodic / month-end style specialist — longer idle TTL
+    ttl_days: 180
+    eval_threshold: 0.8
+    status: active
+    latest_eval_score: 1.0

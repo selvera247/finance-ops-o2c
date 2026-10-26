@@ -155,6 +155,15 @@ def is_tool_allowed(agent_name: str, tool_name: str) -> tuple[bool, str]:
     tool = (tool_name or "").strip()
     if not agent or not tool:
         return False, "missing_agent_or_tool"
+    # Lifecycle gate (retired / revoked grants)
+    try:
+        from finance_ops.governance.registry import is_invocation_allowed
+
+        life_ok, life_reason = is_invocation_allowed(agent)
+        if not life_ok:
+            return False, life_reason
+    except Exception as exc:  # noqa: BLE001
+        return False, f"registry_error:{exc}"
     try:
         policy = _policy()
     except PolicyLoadError as exc:

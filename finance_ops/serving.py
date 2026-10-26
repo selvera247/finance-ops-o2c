@@ -132,3 +132,18 @@ def api_bootstrap() -> dict[str, Any]:
     vectors = build_policy_index()
     graph = sync_knowledge_graph()
     return {"status": "success", "batch": batch, "vectors": vectors, "graph": graph}
+
+
+@app.post("/v1/governance/sweep")
+def api_governance_sweep() -> dict[str, Any]:
+    """Cloud Scheduler target: TTL + eval lifecycle sweep (retire / deprecate / revoke)."""
+    from finance_ops.governance.registry import sweep_lifecycle
+
+    return sweep_lifecycle()
+
+
+@app.get("/v1/governance/agents")
+def api_governance_agents() -> dict[str, Any]:
+    from finance_ops.governance.registry import list_agents
+
+    return {"status": "success", "agents": list_agents(), "needs_review": False}
