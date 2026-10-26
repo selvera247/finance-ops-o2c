@@ -74,13 +74,32 @@ def request_approval(
     related_ids: str = "",
     wait_days: float = 3.0,
     notify_slack: bool = True,
+    vendor_risk: str = "unknown",
 ) -> dict[str, Any]:
     """#8 Serialize a pending HITL approval and optionally notify Slack."""
     _guard("request_approval")
+    from finance_ops.governance.policy import requires_approval
     from finance_ops.runtime.slack_hitl import approval_links, notify_slack as slack_notify
+
+    action = (kind or "request_approval").strip() or "request_approval"
+    decision = requires_approval(
+        action,
+        float(amount),
+        vendor_risk=vendor_risk,
+        agent="payments_agent",
+    )
+    if decision.denied:
+        return {
+            "status": "denied",
+            "error": "policy_denied",
+            "policy": {"outcome": decision.outcome, "reason": decision.reason},
+            "needs_review": True,
+        }
 
     payload = {
         "related_ids": [x.strip() for x in related_ids.split(",") if x.strip()],
+        "vendor_risk": vendor_risk,
+        "policy_reason": decision.reason,
     }
     approval = DEFAULT_STORE.create(
         kind=kind,
@@ -96,6 +115,7 @@ def request_approval(
         "approval": approval.model_dump(),
         "links": links,
         "slack": slack,
+        "policy": {"outcome": decision.outcome, "reason": decision.reason},
         "resume_hint": (
             f"Slack button or open {links['approve']} "
             f"(HITL server: python -m finance_ops.runtime.hitl_server)"
@@ -103,15 +123,16 @@ def request_approval(
         "needs_review": True,
     }
     result["evidence"] = record_evidence(
-        agent="coordinator",
+        agent="payments_agent",
         action="request_approval",
-        inputs={"kind": kind, "amount": amount, "summary": summary},
+        inputs={"kind": kind, "amount": amount, "summary": summary, "vendor_risk": vendor_risk},
         outputs={
             "approval_id": approval.approval_id,
             "status": "pending",
             "slack_sent": slack.get("sent"),
+            "policy": decision.outcome,
         },
-        sources=["hitl:approval_store", "slack:hitl"],
+        sources=["hitl:approval_store", "slack:hitl", "governance:policy"],
     )
     return result
 

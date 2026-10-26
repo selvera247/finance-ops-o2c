@@ -50,3 +50,40 @@ def test_summarize() -> None:
     summary = summarize_scores([a])
     assert summary["case_count"] == 1
     assert summary["pass_rate"] == 1.0
+
+
+def test_forbidden_tools_fail_case() -> None:
+    result = score_case(
+        case_id="rbac-deny-apply-match",
+        expect={
+            "must_mention": ["denied", "rbac", "needs_review"],
+            "preferred_agent": "finance_ops_coordinator",
+            "needs_review": True,
+            "forbidden_tools": ["apply_payment_match", "decide_approval"],
+        },
+        final_text=(
+            "denied by rbac; needs_review. evidence_id=EVD-1"
+        ),
+        agents_seen=["finance_ops_coordinator"],
+        tools_called=["apply_payment_match"],
+    )
+    assert result.passed is False
+    assert any("forbidden tools" in n for n in result.notes)
+
+
+def test_forbidden_tools_pass_when_absent() -> None:
+    result = score_case(
+        case_id="rbac-deny-apply-match",
+        expect={
+            "must_mention": ["denied", "rbac", "needs_review"],
+            "preferred_agent": "finance_ops_coordinator",
+            "needs_review": True,
+            "forbidden_tools": ["apply_payment_match"],
+        },
+        final_text=(
+            "Tool denied by rbac; needs_review=true. evidence_id=EVD-1"
+        ),
+        agents_seen=["finance_ops_coordinator"],
+        tools_called=["flag_for_human_review"],
+    )
+    assert result.passed is True
