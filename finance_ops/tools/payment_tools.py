@@ -94,20 +94,51 @@ def apply_payment_match(payment_id: str, invoice_id: str) -> dict[str, Any]:
         _guard("apply_payment_match")
     except CircuitOpenError as exc:
         return {"status": "circuit_open", "error": str(exc), "needs_review": True}
+    from finance_ops.governance.policy import requires_approval
+
     payment_id = payment_id.strip().upper()
     invoice_id = invoice_id.strip().upper()
+    payment = repo.get_payment(payment_id)
+    amount = float((payment or {}).get("amount") or 0)
+    decision = requires_approval(
+        "apply_payment_match",
+        amount,
+        vendor_risk="unknown",
+        agent="payments_agent",
+    )
+    if decision.denied:
+        return {
+            "status": "denied",
+            "error": "policy_denied",
+            "payment_id": payment_id,
+            "invoice_id": invoice_id,
+            "policy": {"outcome": decision.outcome, "reason": decision.reason},
+            "needs_review": True,
+        }
+    if decision.needs_human:
+        return {
+            "status": "needs_approval",
+            "error": "policy_requires_human",
+            "payment_id": payment_id,
+            "invoice_id": invoice_id,
+            "policy": {"outcome": decision.outcome, "reason": decision.reason},
+            "hint": "Call request_cash_app_approval — direct apply is blocked by policy",
+            "needs_review": True,
+        }
+
     applied = repo.apply_payment_match(payment_id, invoice_id)
     result = {
         "status": "success" if applied.get("ok") else "error",
         "applied": applied,
+        "policy": {"outcome": decision.outcome, "reason": decision.reason},
         "needs_review": not applied.get("ok"),
     }
     result["evidence"] = record_evidence(
         agent="payments_agent",
         action="apply_payment_match",
         inputs={"payment_id": payment_id, "invoice_id": invoice_id},
-        outputs=applied,
-        sources=[repo.source_label()],
+        outputs={**applied, "policy": decision.outcome},
+        sources=[repo.source_label(), "governance:policy"],
     )
     return result
 
@@ -125,6 +156,8 @@ def request_cash_app_approval(
 
     from finance_ops.runtime.hitl import DEFAULT_STORE
     from finance_ops.runtime.slack_hitl import approval_links, notify_slack as slack_notify
+
+    from finance_ops.governance.policy import requires_approval
 
     payment_id = payment_id.strip().upper()
     suggestion = suggest_payment_match(payment_id)
@@ -156,6 +189,47 @@ def request_cash_app_approval(
             "related_ids": [payment_id, invoice_id],
         }
 
+    decision = requires_approval(
+        kind,
+        amount,
+        vendor_risk="unknown",
+        agent="payments_agent",
+    )
+    if decision.denied:
+        return {
+            "status": "denied",
+            "error": "policy_denied",
+            "payment_id": payment_id,
+            "invoice_id": invoice_id or None,
+            "suggestion": {
+                "recommendation": suggestion.get("recommendation"),
+                "candidates": suggestion.get("candidates"),
+            },
+            "policy": {"outcome": decision.outcome, "reason": decision.reason},
+            "needs_review": True,
+        }
+
+    # Policy allow → auto-apply when an invoice is recommended (no HITL bypass of deny).
+    if decision.allowed and invoice_id:
+        applied = repo.apply_payment_match(payment_id, invoice_id)
+        result = {
+            "status": "auto_applied" if applied.get("ok") else "error",
+            "payment_id": payment_id,
+            "invoice_id": invoice_id,
+            "applied": applied,
+            "policy": {"outcome": decision.outcome, "reason": decision.reason},
+            "needs_review": not applied.get("ok"),
+        }
+        result["evidence"] = record_evidence(
+            agent="payments_agent",
+            action="request_cash_app_approval",
+            inputs={"payment_id": payment_id, "invoice_id": invoice_id},
+            outputs={"auto_applied": True, "policy": decision.outcome, **applied},
+            sources=[repo.source_label(), "governance:policy"],
+        )
+        return result
+
+    payload["policy_reason"] = decision.reason
     approval = DEFAULT_STORE.create(
         kind=kind,
         amount=amount,
@@ -176,6 +250,7 @@ def request_cash_app_approval(
         "approval": approval.model_dump(),
         "links": links,
         "slack": slack,
+        "policy": {"outcome": decision.outcome, "reason": decision.reason},
         "needs_review": True,
         "resume_hint": (
             f"Approve to apply match, or reject to leave unmatched. "
@@ -190,7 +265,8 @@ def request_cash_app_approval(
             "approval_id": approval.approval_id,
             "kind": kind,
             "slack_sent": slack.get("sent"),
+            "policy": decision.outcome,
         },
-        sources=[repo.source_label(), "hitl:approval_store", "slack:hitl"],
+        sources=[repo.source_label(), "hitl:approval_store", "slack:hitl", "governance:policy"],
     )
     return result
