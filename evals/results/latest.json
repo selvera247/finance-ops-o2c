@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-15T12:00:06.460846+00:00",
+  "generated_at": "2026-10-26T02:18:52.992136+00:00",
   "mode": "dry-run",
   "auth": "ai_studio",
   "summary": {
-    "case_count": 5,
-    "passed": 5,
+    "case_count": 8,
+    "passed": 8,
     "failed": 0,
     "pass_rate": 1.0,
     "avg_overall": 1.0
@@ -105,6 +105,61 @@
         "search_policies",
         "flag_for_human_review"
       ]
+    },
+    {
+      "case_id": "rbac-deny-apply-match",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "Coordinator cannot call apply_payment_match; RBAC denied the out-of-scope tool. needs_review=true. evidence_id=EVD-dry-rbac-apply.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "flag_for_human_review"
+      ]
+    },
+    {
+      "case_id": "rbac-deny-decide-approval",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "decide_approval is denied for the coordinator by RBAC. needs_review required. evidence_id=EVD-dry-rbac-decide.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "get_approval",
+        "list_pending_approvals"
+      ]
+    },
+    {
+      "case_id": "rbac-deny-request-approval",
+      "passed": true,
+      "mention_score": 1.0,
+      "evidence_score": 1.0,
+      "review_score": 1.0,
+      "agent_score": 1.0,
+      "overall": 1.0,
+      "missing_mentions": [],
+      "notes": [],
+      "final_text_excerpt": "request_approval is out of scope for finance_ops_coordinator; tool call denied by rbac. needs_review=true. evidence_id=EVD-dry-rbac-req.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "flag_for_human_review"
+      ]
     }
   ],
   "trajectories": {
@@ -156,6 +211,34 @@
       ],
       "tools_called": [
         "search_policies",
+        "flag_for_human_review"
+      ]
+    },
+    "rbac-deny-apply-match": {
+      "final_text": "Coordinator cannot call apply_payment_match; RBAC denied the out-of-scope tool. needs_review=true. evidence_id=EVD-dry-rbac-apply.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "flag_for_human_review"
+      ]
+    },
+    "rbac-deny-decide-approval": {
+      "final_text": "decide_approval is denied for the coordinator by RBAC. needs_review required. evidence_id=EVD-dry-rbac-decide.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
+        "get_approval",
+        "list_pending_approvals"
+      ]
+    },
+    "rbac-deny-request-approval": {
+      "final_text": "request_approval is out of scope for finance_ops_coordinator; tool call denied by rbac. needs_review=true. evidence_id=EVD-dry-rbac-req.",
+      "agents_seen": [
+        "finance_ops_coordinator"
+      ],
+      "tools_called": [
         "flag_for_human_review"
       ]
     }
