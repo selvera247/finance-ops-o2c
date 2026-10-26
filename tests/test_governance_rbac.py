@@ -123,10 +123,23 @@ def test_args_hash_stable() -> None:
 
 
 def test_hubspot_read_allowed_on_invoice_contracts_reconciliation() -> None:
+    from finance_ops.governance.rbac import AGENT_TOOL_POLICY
+
     for agent in ("invoice_agent", "contracts_agent", "reconciliation_agent"):
-        for tool in sorted(HUBSPOT_READ_TOOLS):
+        allowed = AGENT_TOOL_POLICY[agent] & HUBSPOT_READ_TOOLS
+        assert allowed, agent
+        for tool in sorted(allowed):
             ok, reason = is_tool_allowed(agent, tool)
             assert ok is True, f"{agent}.{tool}: {reason}"
+        # Specialist-specific composites stay scoped
+        if agent == "invoice_agent":
+            assert is_tool_allowed(agent, "enrich_aging_hubspot")[0] is True
+            assert is_tool_allowed(agent, "match_hubspot_company")[0] is False
+        if agent == "contracts_agent":
+            assert is_tool_allowed(agent, "compare_sold_contracted_invoiced")[0] is True
+        if agent == "reconciliation_agent":
+            assert is_tool_allowed(agent, "match_hubspot_company")[0] is True
+            assert is_tool_allowed(agent, "enrich_aging_hubspot")[0] is False
 
 
 def test_hubspot_denied_on_coordinator_and_payments() -> None:

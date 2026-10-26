@@ -10,6 +10,7 @@ from finance_ops.governance.callbacks import (
 from finance_ops.lib.config import default_model
 from finance_ops.tools.feature_tools import lookup_customer_risk
 from finance_ops.tools.hubspot_tools import (
+    enrich_aging_hubspot,
     get_company,
     get_deal,
     get_deal_line_items,
@@ -24,8 +25,9 @@ invoice_agent = Agent(
     description="Specialist for invoices, aging, and customer AR risk features.",
     instruction=(
         "Invoice specialist. Use tools for facts. Cite invoice_id and evidence_id. "
-        "HubSpot read tools add customer context (owner, deals, tickets) for triage only — "
-        "they must not change approval policy. Do not invent balances."
+        "Prefer enrich_aging_hubspot for owner/stage/tickets/renewal triage — "
+        "HubSpot must not change approval policy (policy_bypass stays false). "
+        "Do not invent balances."
     ),
     tools=[
         lookup_invoice,
@@ -37,6 +39,7 @@ invoice_agent = Agent(
         list_closed_won_deals,
         get_deal_line_items,
         get_open_tickets_for_company,
+        enrich_aging_hubspot,
     ],
     before_tool_callback=before_tool_rbac,
     before_agent_callback=before_agent_registry,

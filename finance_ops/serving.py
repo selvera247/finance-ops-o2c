@@ -12,10 +12,10 @@ import hmac
 import os
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="finance_ops", version="0.4.0")
+app = FastAPI(title="finance_ops", version="0.5.0")
 
 
 def _require_governance_token(
@@ -180,3 +180,77 @@ def api_governance_agents(
     from finance_ops.governance.registry import list_agents
 
     return {"status": "success", "agents": list_agents(), "needs_review": False}
+
+
+@app.post("/v1/hubspot/webhook")
+async def api_hubspot_webhook(
+    request: Request,
+    x_hubspot_signature_v3: str | None = Header(default=None, alias="X-HubSpot-Signature-v3"),
+    x_hubspot_request_timestamp: str | None = Header(
+        default=None, alias="X-HubSpot-Request-Timestamp"
+    ),
+) -> dict[str, Any]:
+    """D7 — HubSpot webhook: v3 signature + 5-min replay window; durable DAG by deal id."""
+    from finance_ops.governance.audit import append_audit
+    from finance_ops.integrations.hubspot_webhook import (
+        extract_deal_id,
+        parse_webhook_body,
+        start_deal_workflow,
+        validate_signature_v3,
+    )
+
+    raw = await request.body()
+    # Full target URL as configured in HubSpot (override via env for local/ngrok).
+    public_base = os.getenv("HITL_PUBLIC_BASE_URL", "").rstrip("/")
+    if public_base:
+        full_uri = f"{public_base}/v1/hubspot/webhook"
+    else:
+        full_uri = str(request.url)
+
+    ok, reason = validate_signature_v3(
+        method="POST",
+        full_uri=full_uri,
+        body=raw,
+        timestamp_ms=x_hubspot_request_timestamp or "",
+        signature=x_hubspot_signature_v3 or "",
+    )
+    if not ok:
+        append_audit(
+            event="hubspot_webhook",
+            agent="serving",
+            decision="deny",
+            tool="hubspot_webhook",
+            reason=reason,
+        )
+        raise HTTPException(status_code=401, detail=f"invalid_hubspot_signature:{reason}")
+
+    try:
+        payload = parse_webhook_body(raw)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"invalid_json:{exc}") from exc
+
+    deal_id = extract_deal_id(payload)
+    if not deal_id:
+        append_audit(
+            event="hubspot_webhook",
+            agent="serving",
+            decision="ignore",
+            tool="hubspot_webhook",
+            reason="no_deal_id",
+        )
+        return {"status": "ignored", "reason": "no_deal_id", "needs_review": False}
+
+    event = payload[0] if isinstance(payload, list) and payload else payload
+    if not isinstance(event, dict):
+        event = {"objectId": deal_id}
+    result = start_deal_workflow(deal_id, event=event)
+    append_audit(
+        event="hubspot_webhook",
+        agent="serving",
+        decision="allow",
+        tool="hubspot_webhook",
+        args={"deal_id": deal_id},
+        reason=result.get("workflow_status"),
+        extra={"run_id": result.get("run_id")},
+    )
+    return result
