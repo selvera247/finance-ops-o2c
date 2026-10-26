@@ -1,9 +1,10 @@
-"""Append-only governance audit log (JSONL)."""
+"""Append-only governance audit log (JSONL + optional BigQuery ship)."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,8 +36,13 @@ def append_audit(
     reason: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Append one structured audit record. Failures are swallowed after best-effort write."""
+    """Append one structured audit record. Local JSONL always; BQ when enabled.
+
+    BQ ship failures are recorded on the return dict and never raise — local
+    append remains the process-local source of truth for demos.
+    """
     record: dict[str, Any] = {
+        "event_id": f"AUD-{uuid.uuid4().hex[:12]}",
         "ts": datetime.now(timezone.utc).isoformat(),
         "event": event,
         "agent": agent,
@@ -53,4 +59,16 @@ def append_audit(
             fh.write(json.dumps(record, default=str) + "\n")
     except OSError:
         record["audit_write_error"] = True
+
+    try:
+        from finance_ops.governance.audit_bq import ship_audit_record
+
+        ship = ship_audit_record(record)
+        if ship.get("shipped"):
+            record["bq"] = {"shipped": True, "event_id": ship.get("event_id")}
+        elif not ship.get("skipped"):
+            record["bq"] = {"shipped": False, "error": ship.get("error") or ship}
+    except Exception as exc:  # noqa: BLE001
+        record["bq"] = {"shipped": False, "error": str(exc)}
+
     return record

@@ -36,7 +36,8 @@ agents:
 
   - name: reconciliation_agent
     owner: ar-ops
-    # Periodic / month-end style specialist — longer idle TTL
+    # Per-agent TTL override for periodic jobs (month-/quarter-/year-end).
+    # Default fleet TTL is 90d; raise this so sweep does not retire idle-but-legitimate agents.
     ttl_days: 180
     eval_threshold: 0.8
     status: active

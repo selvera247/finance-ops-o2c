@@ -48,3 +48,18 @@ CREATE TABLE IF NOT EXISTS `${PROJECT}.${DATASET}.portal_extracts` (
   batch_id STRING,
   ingested_at TIMESTAMP
 );
+
+-- Append-only governance audit (shipped from finance_ops.governance.audit).
+-- Prefer insert-only IAM for the runtime SA; agents should not UPDATE/DELETE.
+CREATE TABLE IF NOT EXISTS `${PROJECT}.${DATASET}.governance_audit` (
+  event_id STRING,
+  ts TIMESTAMP,
+  event STRING,
+  agent STRING,
+  tool STRING,
+  args_hash STRING,
+  decision STRING,
+  reason STRING,
+  extra_json STRING,
+  ingested_at TIMESTAMP
+);
