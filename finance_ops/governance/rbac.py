@@ -29,6 +29,23 @@ PAYMENT_TOOLS: frozenset[str] = frozenset(
     }
 )
 
+# HubSpot tool groups (deny by default — only listed agents get these names).
+HUBSPOT_READ_TOOLS: frozenset[str] = frozenset(
+    {
+        "get_company",
+        "get_deal",
+        "list_closed_won_deals",
+        "get_deal_line_items",
+        "get_open_tickets_for_company",
+    }
+)
+HUBSPOT_WRITE_TOOLS: frozenset[str] = frozenset(
+    {
+        "create_task",
+        "create_note",
+    }
+)
+
 # Deny-by-default allowlists. Keep coordinator to route/read (+ non-payment portal ops).
 AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
     "finance_ops_coordinator": frozenset(
@@ -76,6 +93,7 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "budget_pack_context",
             "sanitize_payload",
             "heal_tool_result",
+            # HubSpot: neither read nor write on coordinator
         }
     ),
     "invoice_agent": frozenset(
@@ -84,6 +102,7 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "list_open_invoices",
             "aging_summary",
             "lookup_customer_risk",
+            *HUBSPOT_READ_TOOLS,
         }
     ),
     "payments_agent": frozenset(
@@ -110,12 +129,14 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "budget_pack_context",
             "heal_suggest_payment",
             "heal_tool_result",
+            # HubSpot: neither read nor write on payments (HITL write is runtime helper)
         }
     ),
     "contracts_agent": frozenset(
         {
             "lookup_contract",
             "lookup_customer_contract",
+            *HUBSPOT_READ_TOOLS,
         }
     ),
     "reconciliation_agent": frozenset(
@@ -125,6 +146,7 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "graph_status",
             "search_policies",
             "suggest_payment_match",
+            *HUBSPOT_READ_TOOLS,
         }
     ),
 }
@@ -177,9 +199,26 @@ def is_tool_allowed(agent_name: str, tool_name: str) -> tuple[bool, str]:
             tool in APPROVAL_MUTATING_TOOLS or tool in PAYMENT_TOOLS
         ):
             return False, "coordinator_denied_payment_or_approval_mutating"
+        if agent in {"finance_ops_coordinator", "payments_agent"} and (
+            tool in HUBSPOT_READ_TOOLS or tool in HUBSPOT_WRITE_TOOLS
+        ):
+            return False, "hubspot_denied_for_agent"
         return False, "tool_not_in_allowlist"
     if agent == "finance_ops_coordinator" and (
         tool in APPROVAL_MUTATING_TOOLS or tool in PAYMENT_TOOLS
     ):
         return False, "coordinator_denied_payment_or_approval_mutating"
+    if agent in {"finance_ops_coordinator", "payments_agent"} and (
+        tool in HUBSPOT_READ_TOOLS or tool in HUBSPOT_WRITE_TOOLS
+    ):
+        return False, "hubspot_denied_for_agent"
+    # Write tools are never LLM-allowlisted; deny even if mis-added to a specialist
+    if tool in HUBSPOT_WRITE_TOOLS and agent in {
+        "invoice_agent",
+        "contracts_agent",
+        "reconciliation_agent",
+        "finance_ops_coordinator",
+        "payments_agent",
+    }:
+        return False, "hubspot_write_runtime_only"
     return True, "allow"
