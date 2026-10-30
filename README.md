@@ -116,6 +116,7 @@ HITL_PUBLIC_BASE_URL=https://your-public-host   # signed webhook URI base
 
 ## Portfolio master layer (complete)
 
+- **Next product bet:** [docs/ar-exception-queue.md](docs/ar-exception-queue.md) — feed → triage → Slack HITL → apply (not per-seat UI)
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)
 - **L7 narrative:** [docs/cfo-cto-one-pager.md](docs/cfo-cto-one-pager.md)
 - **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/smoke_master_layer.py`

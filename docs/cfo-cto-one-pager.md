@@ -1,10 +1,10 @@
 # Finance Ops Agents — CFO / CTO one-pager
 
 **Audience:** CFO (control & risk) · CTO / Head of Data (architecture) · PSO interview panel  
-**Status:** Master plan complete · Spike A + craft C1/C2/C3/C7 · Slack HITL + **live Cloud Run**  
-**Date:** 2026-10-21  
+**Status:** Master plan complete · Spike A/B + craft C1–C7 · Slack HITL + **live Cloud Run** · next = **AR exception queue**  
+**Date:** 2026-10-30  
 **Live API:** https://finance-ops-301858971164.us-central1.run.app/docs  
-**Backlog:** [backlog.md](backlog.md)
+**Backlog:** [backlog.md](backlog.md) · **Product bet:** [ar-exception-queue.md](ar-exception-queue.md)
 
 ---
 
@@ -35,9 +35,10 @@ AR exceptions, unmatched cash, and legacy portals still burn analyst hours. Most
 **Validated live:**
 
 - Aging `CUST-ACME` → **$16,700** (ADK + Cloud Run)
-- Spike A cash app: suggest → HITL approve → apply (`PAY-1001` → `INV-84219`)
+- Spike A cash app: `request_cash_app_approval` → Slack HITL approve → `apply_payment_match` (`PAY-1001` → `INV-84219`)
+- Spike B portal remittance extract path ready for the same HITL gate
 - Parking lot proven then torn down for idle cost: BigQuery · Matching Engine · Spanner · Agent Engine (reactivate runbooks in-repo)
-- MCP: Cursor calls warehouse tools read-only
+- MCP: Cursor calls warehouse tools read-only (no apply)
 
 ## Architecture (one picture)
 
@@ -80,16 +81,16 @@ ERP JSON + portal CSVs / GUI
 
 ## Done vs next
 
-| Done | Next (see [backlog.md](backlog.md)) |
+| Done | Next (see [ar-exception-queue.md](ar-exception-queue.md)) |
 | --- | --- |
-| Master plan L3–L6 · Cloud Run · Slack HITL | **Spike B** portal extract (or deepen Spike A BQ/Slack) |
-| Parking lot proven + idle teardown runbooks | Craft **C4–C6** (context · sanitize · self-heal); optional **C7-C** |
-| Spike A · MCP · sandbox · shadow · memory | Hygiene: branch cleanup · revoke PATs · delete idle Agent Engine |
+| Master plan L3–L6 · Cloud Run · Slack HITL | **Real AR exception queue** — feed → triage → Slack approve → apply |
+| Spike A + Spike B · MCP · sandbox · shadow · memory · C4–C6 | Free wedge (aging / MCP / HubSpot enrich / shadow) → paid resolve + optional AR retainer |
+| Parking lot proven + idle teardown runbooks | One live feed + pilot priced per cleared exception — not per-seat UI |
 
 ## Ask / next conversation
 
-With Spike A + craft baseline in place, pick: **Spike B portal extract** for one carrier/payer, or **C4–C6** hardening. Production still means a real AR exception queue — evidence + HITL stay non-negotiable.
+Spikes and craft are in place. The product bet is the **AR exception queue**: package unmatched cash and portal exceptions as a governed work queue, charge for resolved matches (and optional weekly human AR ops), keep evidence + HITL non-negotiable. Do not lead with another dashboard seat SKU.
 
 ---
 
-*Repo: `selvera247/finance_agents` · Status: [master-plan-status.md](master-plan-status.md) · Backlog: [backlog.md](backlog.md)*
+*Repo: `selvera247/finance_agents` · Status: [master-plan-status.md](master-plan-status.md) · Backlog: [backlog.md](backlog.md) · Product: [ar-exception-queue.md](ar-exception-queue.md)*

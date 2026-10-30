@@ -1,8 +1,8 @@
 # Backlog (post master plan + parking lot)
 
-**As of:** 2026-10-21  
+**As of:** 2026-10-30  
 
-Portfolio craft + spikes are complete. Remaining items are hygiene and the next product step (real AR exception queue).
+Portfolio craft + spikes are complete. **Primary next product bet:** real AR exception queue — see [ar-exception-queue.md](ar-exception-queue.md).
 
 ## Production spikes
 
@@ -32,13 +32,21 @@ Portfolio craft + spikes are complete. Remaining items are hygiene and the next 
 | Delete merged `cursor/*` remotes | **Done** (re-clean after each merge) |
 | Delete `cursor/bq-spike-a-received-at-a24d` | Optional |
 | Slack `.env` load | **Done** |
-| One-pager refresh | Optional (status/next section lags Spike B + C4–C7) |
+| One-pager refresh | **Done** (2026-10-30 — points at AR exception queue) |
 | Drop `cursor/backlog-a24d` | **Done** |
 | Delete idle Agent Engine | **Done** |
 | Bootstrap sqlite | Live via `/v1/bootstrap` |
 
-## Next (not scheduled)
+## Next — AR exception queue (scheduled product)
 
-| Item | Notes |
+Canonical brief: **[ar-exception-queue.md](ar-exception-queue.md)**
+
+| Slice | Notes |
 | --- | --- |
-| Real AR exception queue | Production path beyond spikes — feed, triage, HITL, apply back to ERP/warehouse |
+| Queue story + metrics | Package Spike A + B as feed → triage → `request_cash_app_approval` → apply; track matched $ / time-to-approve |
+| Live feed | One ERP export or HubSpot gap into durable triage |
+| SKUs | Free read · Agent resolve (per exception) · Human AR ops retainer · optional ERP write-back |
+| Pilot | One AR team / carrier-payer; no per-seat dashboard lead |
+| Studio expansion | Portal remittance / leakage / collections **after** queue conversion |
+
+**Agent write path:** `request_cash_app_approval` (not direct `apply_payment_match`). MCP stays read-only.
