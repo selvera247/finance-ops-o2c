@@ -370,7 +370,7 @@ def triage_unmatched_payments(
     Uses batch scoring (one invoice preload) so bulk feeds stay O(customers) I/O.
     """
     from data_plane import repository as repo
-    from finance_ops.tools.payment_tools import score_payments_batch
+    from finance_ops.ar_queue.application.scoring import score_payments_batch
 
     if payment_ids:
         ids = [p.strip().upper() for p in payment_ids if p.strip()]

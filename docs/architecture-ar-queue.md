@@ -37,12 +37,12 @@
 | --- | --- | --- |
 | Edge | `serving.py` `/v1/ar/*` | HTTP contract for queue, metrics, triage, SKUs |
 | Free wedge | MCP `finance_ops_readonly` | Aging / suggest / queue summary — no writes |
-| App services | `finance_ops/services/queue_service.py` | Sync · list · get · metrics · meter |
-| App services | `finance_ops/services/sku_catalog.py` | SKU definitions (Free / Resolve / Retainer) |
+| Clean BC | `finance_ops/ar_queue/` | Domain · application · ports · adapters — see [clean-architecture-ar-queue.md](clean-architecture-ar-queue.md) |
+| Façades | `services/queue_service` · `sku_catalog` | Thin re-exports for legacy imports |
 | Runtime | `ar_feed` · `durable` · `exception_queue` · `hitl` | Feed, DAG, aggregate metrics, approvals |
 | Agents | coordinator / payments | Tool routing; HITL write path on payments only |
 | Data | DuckDB/BQ warehouse | SoT for AR entities + first-class exception rows |
-| Cache | `finance_ops/runtime/cache.py` | TTL LRU (Redis-compatible key API) |
+| Cache | `ar_queue.adapters.ttl_cache` → `runtime/cache` | TTL LRU (Redis-compatible key API) |
 
 ---
 
@@ -128,7 +128,8 @@ Never cache approval decisions or apply results as authoritative.
 ## 8. Minimal production version (what shipped)
 
 - Schema + repository helpers for `ar_exceptions` / `sku_meter_events`
-- `queue_service.sync_from_warehouse` + list/get/metrics
+- Clean architecture package `finance_ops/ar_queue` + façades — [clean-architecture-ar-queue.md](clean-architecture-ar-queue.md)
+- `sync_from_warehouse` + list/get/metrics use cases
 - TTL cache wired to metrics/list (cache-before-ensure on hits)
 - Batch scoring + batch upsert + portal one-scan — see [performance-ar-queue.md](performance-ar-queue.md)
 - HTTP `/v1/ar/*` + triage hooks that sync after DAG

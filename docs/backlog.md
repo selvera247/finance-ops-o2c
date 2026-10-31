@@ -50,6 +50,7 @@ Canonical brief: **[ar-exception-queue.md](ar-exception-queue.md)**
 | SKUs | **MVP** | Catalog + `sku_meter_events` on resolve — see [architecture-ar-queue.md](architecture-ar-queue.md) |
 | Queue projection | **MVP** | `ar_exceptions` table + `/v1/ar/*` APIs + TTL cache |
 | Queue perf | **Done** | Batch score/upsert, PK lookups, cache-before-ensure — [performance-ar-queue.md](performance-ar-queue.md) |
+| Clean architecture | **Done** | `finance_ops/ar_queue` domain/app/ports/adapters — [clean-architecture-ar-queue.md](clean-architecture-ar-queue.md) |
 | Pilot | Pending | One AR team / carrier-payer; no per-seat dashboard lead |
 | Studio expansion | Later | Portal remittance / leakage / collections **after** queue conversion |
 

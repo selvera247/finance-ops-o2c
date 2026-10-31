@@ -138,13 +138,13 @@ def _cash_app_lane() -> dict[str, Any]:
 
 
 def _portal_lane() -> dict[str, Any]:
-    from data_plane import repository as repo
-    from finance_ops.tools.portal_spike_tools import classify_portal_row
+    from finance_ops.ar_queue.adapters.warehouse_payments import (
+        DEFAULT_PAYMENT_CATALOG,
+    )
+    from finance_ops.ar_queue.domain.portal_classify import classify_portal_row
 
     # One portal scan for all walkthrough ids (avoid N full-table searches).
-    extracts = {
-        str(r.get("external_id") or "").upper(): r for r in repo.portal_extracts()
-    }
+    extracts = DEFAULT_PAYMENT_CATALOG.portal_extracts_by_external_id()
     items = []
     open_usd = 0.0
     accept_usd = 0.0
