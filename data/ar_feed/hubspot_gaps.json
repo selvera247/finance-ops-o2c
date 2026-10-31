@@ -1,0 +1,18 @@
+[
+  {
+    "customer_id": "C-1042",
+    "company_id": "hs-fixture-1042",
+    "company_name": "Acme North (fixture)",
+    "sold": 55000.0,
+    "deal_ids": ["DEAL-FIX-1042"],
+    "source": "fixture:hubspot_gaps"
+  },
+  {
+    "customer_id": "C-2099",
+    "company_id": "hs-fixture-2099",
+    "company_name": "Beacon Labs (fixture)",
+    "sold": 3200.0,
+    "deal_ids": ["DEAL-FIX-2099"],
+    "source": "fixture:hubspot_gaps"
+  }
+]

@@ -117,6 +117,11 @@ HITL_PUBLIC_BASE_URL=https://your-public-host   # signed webhook URI base
 ## Portfolio master layer (complete)
 
 - **Next product bet:** [docs/ar-exception-queue.md](docs/ar-exception-queue.md) — feed → triage → Slack HITL → apply (not per-seat UI)
+- **Slice 1 queue metrics:** `PYTHONPATH=. python scripts/ar_exception_queue.py` · `GET /v1/ar_exception_queue` · tool `ar_exception_queue_summary`
+- **Slice 2 live feed:** `PYTHONPATH=. python scripts/run_ar_feed_triage.py` · `POST /v1/ar_exception_triage` · `data/ar_feed/`
+- **Feed/triage debug notes:** [docs/debug-ar-feed-triage.md](docs/debug-ar-feed-triage.md)
+- **MVP architecture:** [docs/architecture-ar-queue.md](docs/architecture-ar-queue.md) · `GET /v1/ar/exceptions` · `GET /v1/ar/metrics` · `GET /v1/ar/skus`
+- **Queue perf:** [docs/performance-ar-queue.md](docs/performance-ar-queue.md) — batch score/upsert, PK lookups, cache-before-ensure
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)
 - **L7 narrative:** [docs/cfo-cto-one-pager.md](docs/cfo-cto-one-pager.md)
 - **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/smoke_master_layer.py`

@@ -67,9 +67,13 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "classify_portal_exception",
             "spike_b_walkthrough",
             "resolve_portal_with_fallback",
-            # HITL read-only
+            # HITL read-only + exception queue metrics
             "list_pending_approvals",
             "get_approval",
+            "ar_exception_queue_summary",
+            "sync_ar_exceptions",
+            "ingest_ar_feed",
+            "start_ar_exception_triage",
             # durable / a2a / circuit (ops; not payment match apply)
             "start_durable_reconcile",
             "resume_durable_workflow",
@@ -125,6 +129,7 @@ AGENT_TOOL_POLICY: dict[str, frozenset[str]] = {
             "decide_approval",
             "get_approval",
             "list_pending_approvals",
+            "ar_exception_queue_summary",
             "run_sandboxed_calc",
             "run_sandboxed_python",
             "shadow_cash_app_trajectory",

@@ -35,6 +35,6 @@ def ensure_dirs() -> None:
     VECTOR_DIR.mkdir(parents=True, exist_ok=True)
     STREAM_DIR.mkdir(parents=True, exist_ok=True)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    for portal in ("legacy_bank", "sagesure", "payer_availity"):
+    for portal in ("legacy_bank", "sagesure", "payer_availity", "ar_exceptions"):
         (INCOMING_DIR / portal).mkdir(parents=True, exist_ok=True)
         (INCOMING_DIR / portal / "processed").mkdir(parents=True, exist_ok=True)

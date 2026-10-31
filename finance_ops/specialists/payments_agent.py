@@ -26,6 +26,7 @@ from finance_ops.tools.memory_tools import (
     memory_put,
     memory_search,
 )
+from finance_ops.tools.queue_tools import ar_exception_queue_summary
 from finance_ops.tools.runtime_tools import (
     decide_approval,
     get_approval,
@@ -52,6 +53,8 @@ payments_agent = Agent(
         "live here (coordinator is read-only for approvals). "
         "On suggest failures use heal_suggest_payment (one retry then needs_review). "
         "After list_unmatched_payments, budget_pack_context to keep context small. "
+        "Queue metrics: ar_exception_queue_summary for matched $/pending HITL/"
+        "time-to-approve across Spike A+B (read-only). "
         "Shadow (C3): shadow_cash_app_trajectory or shadow_spike_a_walkthrough to record "
         "what would happen without HITL/apply/Slack — prefer for dry demos. "
         "Memory (C2): memory_put working notes per payment; promote to episodic/long_term "
@@ -70,6 +73,7 @@ payments_agent = Agent(
         decide_approval,
         get_approval,
         list_pending_approvals,
+        ar_exception_queue_summary,
         run_sandboxed_calc,
         run_sandboxed_python,
         shadow_cash_app_trajectory,

@@ -2,7 +2,9 @@
 
 **As of:** 2026-10-30  
 
-Portfolio craft + spikes are complete. **Primary next product bet:** real AR exception queue — see [ar-exception-queue.md](ar-exception-queue.md).
+Portfolio craft + spikes are complete. **Primary product bet:** real AR exception queue — see [ar-exception-queue.md](ar-exception-queue.md).  
+**Slice 1 (queue story + metrics): Done** — `ar_exception_queue_summary` / `GET /v1/ar_exception_queue` / `scripts/ar_exception_queue.py`.  
+**Slice 2 (live feed → triage): Done** — `start_ar_exception_triage` / `POST /v1/ar_exception_triage` / `scripts/run_ar_feed_triage.py`.
 
 ## Production spikes
 
@@ -41,12 +43,14 @@ Portfolio craft + spikes are complete. **Primary next product bet:** real AR exc
 
 Canonical brief: **[ar-exception-queue.md](ar-exception-queue.md)**
 
-| Slice | Notes |
-| --- | --- |
-| Queue story + metrics | Package Spike A + B as feed → triage → `request_cash_app_approval` → apply; track matched $ / time-to-approve |
-| Live feed | One ERP export or HubSpot gap into durable triage |
-| SKUs | Free read · Agent resolve (per exception) · Human AR ops retainer · optional ERP write-back |
-| Pilot | One AR team / carrier-payer; no per-seat dashboard lead |
-| Studio expansion | Portal remittance / leakage / collections **after** queue conversion |
+| Slice | Status | Notes |
+| --- | --- | --- |
+| Queue story + metrics | **Done** | Spike A+B story; matched $ / pending HITL / time-to-approve |
+| Live feed | **Done** | ERP CSV + HubSpot gaps → durable triage (HITL opt-in) |
+| SKUs | **MVP** | Catalog + `sku_meter_events` on resolve — see [architecture-ar-queue.md](architecture-ar-queue.md) |
+| Queue projection | **MVP** | `ar_exceptions` table + `/v1/ar/*` APIs + TTL cache |
+| Queue perf | **Done** | Batch score/upsert, PK lookups, cache-before-ensure — [performance-ar-queue.md](performance-ar-queue.md) |
+| Pilot | Pending | One AR team / carrier-payer; no per-seat dashboard lead |
+| Studio expansion | Later | Portal remittance / leakage / collections **after** queue conversion |
 
 **Agent write path:** `request_cash_app_approval` (not direct `apply_payment_match`). MCP stays read-only.

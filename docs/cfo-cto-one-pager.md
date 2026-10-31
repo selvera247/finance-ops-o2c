@@ -83,9 +83,9 @@ ERP JSON + portal CSVs / GUI
 
 | Done | Next (see [ar-exception-queue.md](ar-exception-queue.md)) |
 | --- | --- |
-| Master plan L3–L6 · Cloud Run · Slack HITL | **Real AR exception queue** — feed → triage → Slack approve → apply |
-| Spike A + Spike B · MCP · sandbox · shadow · memory · C4–C6 | Free wedge (aging / MCP / HubSpot enrich / shadow) → paid resolve + optional AR retainer |
-| Parking lot proven + idle teardown runbooks | One live feed + pilot priced per cleared exception — not per-seat UI |
+| Master plan L3–L6 · Cloud Run · Slack HITL | Pilot priced per cleared exception |
+| Spike A + Spike B · MCP · sandbox · shadow · memory · C4–C6 | Free wedge → paid resolve + optional AR retainer |
+| **Slices 1–3 MVP** queue + feed + `ar_exceptions` / SKUs | See [architecture-ar-queue.md](architecture-ar-queue.md) |
 
 ## Ask / next conversation
 

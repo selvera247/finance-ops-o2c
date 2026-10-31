@@ -44,6 +44,12 @@ from finance_ops.tools.portal_spike_tools import (
     classify_portal_exception,
     spike_b_walkthrough,
 )
+from finance_ops.tools.queue_tools import (
+    ar_exception_queue_summary,
+    ingest_ar_feed,
+    start_ar_exception_triage,
+    sync_ar_exceptions,
+)
 from finance_ops.tools.rag_tools import search_policies
 from finance_ops.tools.runtime_tools import (
     circuit_status,
@@ -91,6 +97,12 @@ root_agent = Agent(
         "Spike B (payer_availity): after load_spike_b, use spike_b_walkthrough / "
         "classify_portal_exception; transfer portal HITL review to payments_agent; "
         "shadow_spike_b_walkthrough for dry demos.\n"
+        "Exception queue: ar_exception_queue_summary for Spike A+B story + metrics "
+        "(matched $, pending approvals, time-to-approve) — read-only, no dashboard.\n"
+        "Live feed (slice 2): ingest_ar_feed or start_ar_exception_triage for ERP CSV + "
+        "HubSpot sold-vs-invoiced gaps into durable triage — never auto-applies matches.\n"
+        "Product queue: sync_ar_exceptions materialises ar_exceptions; use HTTP /v1/ar/* "
+        "for list/metrics/skus.\n"
         "HITL: you may list/get approvals (read-only). "
         "Payment/approval mutations (request_approval, decide_approval, "
         "request_cash_app_approval, apply_payment_match) → payments_agent only.\n"
@@ -128,6 +140,10 @@ root_agent = Agent(
         resolve_portal_with_fallback,
         list_pending_approvals,
         get_approval,
+        ar_exception_queue_summary,
+        sync_ar_exceptions,
+        ingest_ar_feed,
+        start_ar_exception_triage,
         start_durable_reconcile,
         resume_durable_workflow,
         get_workflow_status,

@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="finance_ops", version="0.5.0")
+app = FastAPI(title="finance_ops", version="0.6.0")
 
 
 def _require_governance_token(
@@ -102,6 +102,81 @@ def api_aging(body: AgingBody) -> dict[str, Any]:
     from finance_ops.tools.invoice_tools import aging_summary
 
     return aging_summary(body.customer_id)
+
+
+@app.get("/v1/ar_exception_queue")
+def api_ar_exception_queue(markdown: bool = False) -> dict[str, Any]:
+    """Slice 1 — Spike A + B exception queue story + metrics (no dashboard)."""
+    from finance_ops.tools.queue_tools import ar_exception_queue_summary
+
+    return ar_exception_queue_summary(include_markdown=markdown)
+
+
+class ArTriageBody(BaseModel):
+    stage_sample: bool = True
+    request_hitl: bool = False
+    notify_slack: bool = False
+    use_live_hubspot: bool = True
+
+
+@app.post("/v1/ar_exception_triage")
+@app.post("/v1/ar/triage")
+def api_ar_exception_triage(body: ArTriageBody | None = None) -> dict[str, Any]:
+    """Slice 2 — ERP/HubSpot feed into durable triage (no auto-apply)."""
+    from finance_ops.tools.queue_tools import start_ar_exception_triage
+
+    body = body or ArTriageBody()
+    return start_ar_exception_triage(
+        stage_sample=body.stage_sample,
+        request_hitl=body.request_hitl,
+        notify_slack=body.notify_slack,
+        use_live_hubspot=body.use_live_hubspot,
+    )
+
+
+@app.get("/v1/ar/exceptions")
+def api_ar_list_exceptions(
+    status: str = "open",
+    lane: str | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """MVP product queue — list materialised ar_exceptions."""
+    from finance_ops.services.queue_service import list_exceptions
+
+    return list_exceptions(status=status or None, lane=lane, limit=limit)
+
+
+@app.get("/v1/ar/exceptions/{exception_id}")
+def api_ar_get_exception(exception_id: str) -> dict[str, Any]:
+    from finance_ops.services.queue_service import get_exception
+
+    out = get_exception(exception_id)
+    if out.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail=out)
+    return out
+
+
+@app.post("/v1/ar/exceptions/sync")
+def api_ar_sync_exceptions() -> dict[str, Any]:
+    """Materialise open exceptions from warehouse payments / portal / gaps."""
+    from finance_ops.services.queue_service import sync_from_warehouse
+
+    return sync_from_warehouse()
+
+
+@app.get("/v1/ar/metrics")
+def api_ar_metrics() -> dict[str, Any]:
+    """Cached product metrics (projection + legacy Spike A/B aggregates)."""
+    from finance_ops.services.queue_service import queue_metrics
+
+    return queue_metrics(use_cache=True)
+
+
+@app.get("/v1/ar/skus")
+def api_ar_skus() -> dict[str, Any]:
+    from finance_ops.services.sku_catalog import list_skus
+
+    return list_skus()
 
 
 @app.post("/v1/request_approval")

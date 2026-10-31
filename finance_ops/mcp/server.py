@@ -121,6 +121,13 @@ def build_server() -> MCPServer:
 
         return _json(_fn(entity_id, max_hops=max_hops))
 
+    @server.tool()
+    def ar_exception_queue_summary(include_markdown: bool = False) -> str:
+        """Spike A+B AR exception queue: story, matched $, pending HITL, time-to-approve."""
+        from finance_ops.tools.queue_tools import ar_exception_queue_summary as _fn
+
+        return _json(_fn(include_markdown=include_markdown))
+
     return server
 
 

@@ -1,0 +1,4 @@
+payment_id,customer_id,amount,currency,status,reference,received_at
+PAY-FEED-01,C-1042,1842.50,USD,unmatched,"Live feed remittance INV-84219",2026-10-28
+PAY-FEED-02,C-1042,975.00,USD,unmatched,"ERA orphan — no invoice on remittance",2026-10-29
+PAY-FEED-03,C-2099,3200.00,USD,unmatched,"PO-99101 closed-won gap candidate",2026-10-30

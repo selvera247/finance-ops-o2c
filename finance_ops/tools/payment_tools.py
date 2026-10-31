@@ -42,48 +42,109 @@ def list_unmatched_payments(customer_id: str | None = None) -> dict[str, Any]:
     return result
 
 
-def suggest_payment_match(payment_id: str) -> dict[str, Any]:
-    payment_id = payment_id.strip().upper()
-    payment = repo.get_payment(payment_id)
-    if not payment:
-        result = {"status": "not_found", "payment_id": payment_id, "needs_review": True}
-        result["evidence"] = record_evidence(
-            agent="payments_agent", action="suggest_payment_match",
-            inputs={"payment_id": payment_id}, outputs=result, sources=[],
-        )
-        return result
+def _score_against_invoices(
+    payment: dict[str, Any],
+    invoices: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Score one payment against a preloaded invoice list (CPU-only)."""
     candidates = []
-    for inv in repo.list_invoices(customer_id=payment["customer_id"], open_only=True):
+    pay_amt = float(payment.get("amount") or 0)
+    ref = (payment.get("reference") or "").upper()
+    for inv in invoices:
         score, reasons = 0.0, []
-        ref = (payment.get("reference") or "").upper()
         if inv["invoice_id"] in ref:
             score += 0.7
             reasons.append("invoice_id_in_reference")
         if inv.get("po_number") and str(inv["po_number"]) in ref:
             score += 0.4
             reasons.append("po_in_reference")
-        amount_delta = abs(float(inv["amount"]) - float(payment["amount"]))
-        if amount_delta <= max(1.0, float(inv["amount"]) * 0.005):
+        inv_amt = float(inv["amount"] or 0)
+        amount_delta = abs(inv_amt - pay_amt)
+        if amount_delta <= max(1.0, inv_amt * 0.005):
             score += 0.5
             reasons.append("amount_within_tolerance")
-        elif float(payment["amount"]) < float(inv["amount"]):
+        elif pay_amt < inv_amt:
             score += 0.2
             reasons.append("possible_partial")
         if score > 0:
-            candidates.append({
-                "invoice_id": inv["invoice_id"], "score": round(score, 2), "reasons": reasons,
-                "invoice_amount": inv["amount"], "invoice_status": inv["status"],
-            })
+            candidates.append(
+                {
+                    "invoice_id": inv["invoice_id"],
+                    "score": round(score, 2),
+                    "reasons": reasons,
+                    "invoice_amount": inv["amount"],
+                    "invoice_status": inv["status"],
+                }
+            )
     candidates.sort(key=lambda c: c["score"], reverse=True)
-    result = {
-        "status": "success", "payment": _clean(payment), "candidates": candidates[:5],
-        "needs_review": True, "recommendation": candidates[0]["invoice_id"] if candidates else None,
+    return {
+        "status": "success",
+        "payment": _clean(payment),
+        "candidates": candidates[:5],
+        "needs_review": True,
+        "recommendation": candidates[0]["invoice_id"] if candidates else None,
     }
+
+
+def score_payment_match(
+    payment_id: str,
+    *,
+    payment: dict[str, Any] | None = None,
+    invoices: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Pure match scoring (no breaker / evidence) — safe for bulk triage.
+
+    Pass ``payment`` / ``invoices`` to avoid repeated warehouse round-trips.
+    """
+    payment_id = payment_id.strip().upper()
+    payment = payment or repo.get_payment(payment_id)
+    if not payment:
+        return {"status": "not_found", "payment_id": payment_id, "needs_review": True}
+    if invoices is None:
+        invoices = repo.list_invoices(
+            customer_id=payment["customer_id"], open_only=True
+        )
+    return _score_against_invoices(payment, invoices)
+
+
+def score_payments_batch(
+    payments: list[dict[str, Any]],
+    *,
+    invoices_by_customer: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Batch-score payments with one invoice preload (O(customers) I/O, not O(payments))."""
+    if invoices_by_customer is None:
+        open_invoices = repo.list_invoices(open_only=True)
+        invoices_by_customer = {}
+        for inv in open_invoices:
+            invoices_by_customer.setdefault(str(inv.get("customer_id")), []).append(inv)
+
+    out: dict[str, dict[str, Any]] = {}
+    for payment in payments:
+        pid = str(payment.get("payment_id") or "").strip().upper()
+        if not pid:
+            continue
+        cust = str(payment.get("customer_id") or "")
+        out[pid] = _score_against_invoices(
+            payment, invoices_by_customer.get(cust) or []
+        )
+    return out
+
+
+def suggest_payment_match(payment_id: str) -> dict[str, Any]:
+    result = score_payment_match(payment_id)
     result["evidence"] = record_evidence(
-        agent="payments_agent", action="suggest_payment_match",
-        inputs={"payment_id": payment_id},
-        outputs={"recommendation": result["recommendation"], "candidate_count": len(candidates)},
-        sources=[repo.source_label(), "policy:POL-RECON-01"],
+        agent="payments_agent",
+        action="suggest_payment_match",
+        inputs={"payment_id": payment_id.strip().upper()},
+        outputs={
+            "recommendation": result.get("recommendation"),
+            "candidate_count": len(result.get("candidates") or []),
+            "status": result.get("status"),
+        },
+        sources=[repo.source_label(), "policy:POL-RECON-01"]
+        if result.get("status") == "success"
+        else [],
     )
     return result
 

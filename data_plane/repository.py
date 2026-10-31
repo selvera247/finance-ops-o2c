@@ -37,7 +37,24 @@ def list_invoices(*, customer_id: str | None = None, open_only: bool = False) ->
 
 
 def get_invoice(invoice_id: str) -> dict[str, Any] | None:
-    rows = [r for r in list_invoices() if str(r.get("invoice_id", "")).upper() == invoice_id.upper()]
+    """Primary-key lookup — avoid full-table list_invoices() scans."""
+    invoice_id = invoice_id.strip().upper()
+    mode = data_mode()
+    if mode == "fixtures" or (mode == "warehouse" and not _warehouse_ready()):
+        for row in fixtures.invoices():
+            if str(row.get("invoice_id", "")).upper() == invoice_id:
+                return row
+        return None
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_get_invoice
+
+        return bq_get_invoice(invoice_id)
+    from data_plane.warehouse import db
+
+    rows = db.query_dicts(
+        "SELECT * FROM invoices WHERE UPPER(invoice_id) = ? LIMIT 1",
+        [invoice_id],
+    )
     return rows[0] if rows else None
 
 
@@ -66,7 +83,24 @@ def list_payments(*, customer_id: str | None = None, unmatched_only: bool = Fals
 
 
 def get_payment(payment_id: str) -> dict[str, Any] | None:
-    rows = [r for r in list_payments() if str(r.get("payment_id", "")).upper() == payment_id.upper()]
+    """Primary-key lookup — avoid full-table list_payments() scans."""
+    payment_id = payment_id.strip().upper()
+    mode = data_mode()
+    if mode == "fixtures" or (mode == "warehouse" and not _warehouse_ready()):
+        for row in fixtures.payments():
+            if str(row.get("payment_id", "")).upper() == payment_id:
+                return row
+        return None
+    if mode == "bigquery":
+        from data_plane.warehouse.bq_adapter import bq_get_payment
+
+        return bq_get_payment(payment_id)
+    from data_plane.warehouse import db
+
+    rows = db.query_dicts(
+        "SELECT * FROM payments WHERE UPPER(payment_id) = ? LIMIT 1",
+        [payment_id],
+    )
     return rows[0] if rows else None
 
 

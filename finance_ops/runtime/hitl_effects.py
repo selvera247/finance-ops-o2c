@@ -32,6 +32,18 @@ def after_decision(item: PendingApproval) -> dict[str, Any]:
                 from data_plane import repository as repo
 
                 result = repo.apply_payment_match(payment_id, invoice_id)
+                meter = None
+                if result.get("ok"):
+                    try:
+                        from finance_ops.services.queue_service import mark_resolved
+
+                        meter = mark_resolved(
+                            source_id=payment_id,
+                            lane="cash_app",
+                            invoice_id=invoice_id,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        meter = {"status": "error", "error": str(exc)}
                 effects.update(
                     {
                         "applied": bool(result.get("ok")),
@@ -39,6 +51,7 @@ def after_decision(item: PendingApproval) -> dict[str, Any]:
                         "payment_id": payment_id,
                         "invoice_id": invoice_id,
                         "result": result,
+                        "queue": meter,
                     }
                 )
         else:

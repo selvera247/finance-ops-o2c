@@ -237,13 +237,27 @@ def start_durable_reconcile(allow_browser: bool = True) -> dict[str, Any]:
 def resume_durable_workflow(run_id: str) -> dict[str, Any]:
     """Resume a durable workflow from its last checkpoint."""
     _guard("resume_durable_workflow")
-    from finance_ops.runtime.durable import DurableWorkflow, portal_reconcile_handlers
+    from finance_ops.runtime.durable import (
+        DurableWorkflow,
+        ar_exception_triage_handlers,
+        deal_closed_won_handlers,
+        portal_reconcile_handlers,
+    )
 
     wf = DurableWorkflow()
     try:
-        finished = wf.resume(run_id, portal_reconcile_handlers(), max_retries=2)
+        prior = wf.load(run_id)
     except FileNotFoundError:
         return {"status": "not_found", "run_id": run_id, "needs_review": True}
+
+    if prior.name == "ar_exception_triage":
+        handlers = ar_exception_triage_handlers()
+    elif prior.name == "hubspot_deal_closed_won":
+        handlers = deal_closed_won_handlers()
+    else:
+        handlers = portal_reconcile_handlers()
+
+    finished = wf.resume(run_id, handlers, max_retries=2)
     return {
         "status": finished.status.value,
         "run_id": finished.run_id,

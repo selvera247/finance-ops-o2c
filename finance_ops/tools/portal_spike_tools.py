@@ -33,30 +33,16 @@ def _find_extract(claim_id: str) -> dict[str, Any] | None:
     return None
 
 
-def classify_portal_exception(claim_id: str) -> dict[str, Any]:
-    """Classify a Spike B / portal extract line for review routing."""
-    try:
-        _guard("classify_portal_exception")
-    except CircuitOpenError as exc:
-        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
-
+def classify_portal_row(claim_id: str, row: dict[str, Any] | None) -> dict[str, Any]:
+    """Pure classification (no breaker / evidence) — safe for queue metrics."""
     claim_id = claim_id.strip().upper()
-    row = _find_extract(claim_id)
     if not row:
-        result: dict[str, Any] = {
+        return {
             "status": "not_found",
             "claim_id": claim_id,
             "hint": "Run python scripts/load_spike_b.py first",
             "needs_review": True,
         }
-        result["evidence"] = record_evidence(
-            agent="coordinator",
-            action="classify_portal_exception",
-            inputs={"claim_id": claim_id},
-            outputs=result,
-            sources=[],
-        )
-        return result
 
     status = str(row.get("status") or "").lower()
     desc = str(row.get("description") or "")
@@ -83,7 +69,7 @@ def classify_portal_exception(claim_id: str) -> dict[str, Any]:
         disposition = "needs_review"
         kind = "portal_extract_review"
 
-    result = {
+    return {
         "status": "success",
         "claim_id": claim_id,
         "extract": _clean(row),
@@ -93,14 +79,36 @@ def classify_portal_exception(claim_id: str) -> dict[str, Any]:
         "amount": amount,
         "needs_review": disposition != "accept_remittance",
     }
+
+
+def classify_portal_exception(claim_id: str) -> dict[str, Any]:
+    """Classify a Spike B / portal extract line for review routing."""
+    try:
+        _guard("classify_portal_exception")
+    except CircuitOpenError as exc:
+        return {"status": "circuit_open", "error": str(exc), "needs_review": True}
+
+    claim_id = claim_id.strip().upper()
+    row = _find_extract(claim_id)
+    result = classify_portal_row(claim_id, row)
+    if result.get("status") != "success":
+        result["evidence"] = record_evidence(
+            agent="coordinator",
+            action="classify_portal_exception",
+            inputs={"claim_id": claim_id},
+            outputs=result,
+            sources=[],
+        )
+        return result
+
     result["evidence"] = record_evidence(
         agent="coordinator",
         action="classify_portal_exception",
         inputs={"claim_id": claim_id},
         outputs={
-            "disposition": disposition,
-            "hitl_kind": kind,
-            "suggested_invoice_ids": invoice_ids,
+            "disposition": result.get("disposition"),
+            "hitl_kind": result.get("hitl_kind"),
+            "suggested_invoice_ids": result.get("suggested_invoice_ids"),
         },
         sources=[repo.source_label() + ":portal_extracts"],
     )

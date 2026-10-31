@@ -77,11 +77,52 @@ Do not open a second niche until the primary queue converts (feed → paid resol
 
 ## Build slices (ordered)
 
-1. **Queue story** — One narrative + metrics over Spike A + Spike B (matched $, pending approvals, time-to-approve). No new dashboard chrome.
-2. **Live feed** — One real AR source into durable triage (ERP CSV/export or HubSpot closed-won → invoice gap).
-3. **SKU + policy** — Document Free / Agent resolve / Human retainer; keep `request_cash_app_approval` as the write gate.
+1. **Queue story** — **Done.** One narrative + metrics over Spike A + Spike B (matched $, pending approvals, time-to-approve). No dashboard chrome.
+2. **Live feed** — **Done.** ERP CSV drop zone + HubSpot sold-vs-invoiced gaps → durable triage (no auto-apply).
+3. **SKU + policy** — **MVP done** (catalog + meter on resolve). Full billing export still deferred.
 4. **Pilot** — One mid-market AR team or one carrier/payer; price per cleared exception.
 5. **Studio expansion** — Only after conversion: second free niche on the same runtime.
+
+### Slice 1 — how to run
+
+```bash
+PYTHONPATH=. python scripts/load_spike_a.py
+PYTHONPATH=. python scripts/load_spike_b.py
+PYTHONPATH=. python scripts/ar_exception_queue.py          # markdown narrative
+PYTHONPATH=. python scripts/ar_exception_queue.py --json   # full snapshot
+
+# HTTP (local or Cloud Run after deploy)
+curl -s http://127.0.0.1:8080/v1/ar_exception_queue | jq .metrics
+```
+
+| Surface | Entry |
+| --- | --- |
+| Tool / agents | `ar_exception_queue_summary` (coordinator + payments; read-only) |
+| MCP | same name on `finance_ops_readonly` |
+| HTTP | `GET /v1/ar_exception_queue?markdown=true` |
+| Metrics | `matched_usd`, `open_exception_usd`, `pending_approvals`, `time_to_approve_seconds` |
+
+### Slice 2 — live feed → durable triage
+
+```bash
+# Stages sample ERP CSV + fixture HubSpot gaps, runs durable DAG
+PYTHONPATH=. python scripts/run_ar_feed_triage.py
+PYTHONPATH=. python scripts/run_ar_feed_triage.py --request-hitl   # open HITL for high-confidence
+PYTHONPATH=. python scripts/run_ar_feed_triage.py --no-live-hubspot
+
+# Or drop a real ERP export:
+cp /path/to/unmatched_payments.csv data/incoming/ar_exceptions/
+PYTHONPATH=. python scripts/run_ar_feed_triage.py --no-sample
+```
+
+| Surface | Entry |
+| --- | --- |
+| Tool / coordinator | `ingest_ar_feed`, `start_ar_exception_triage` |
+| HTTP | `POST /v1/ar_exception_triage` |
+| Samples | `data/ar_feed/` · drop zone `data/incoming/ar_exceptions/` |
+| DAG steps | ingest → cash-app triage → HubSpot gaps → optional HITL → queue snapshot |
+
+**Does not apply matches.** High-confidence suggestions only open `request_cash_app_approval` when `request_hitl=true`.
 
 Parking-lot GCP (BQ / Matching Engine / Spanner / Agent Engine) lights up only when a real queue customer needs them — not as the product lead.
 

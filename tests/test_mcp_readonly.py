@@ -20,6 +20,8 @@ FORBIDDEN = {
     "fetch_legacy_bank_statement",
     "process_portal_incoming",
     "start_durable_reconcile",
+    "ingest_ar_feed",
+    "start_ar_exception_triage",
 }
 
 EXPECTED = {
@@ -34,6 +36,7 @@ EXPECTED = {
     "recent_evidence",
     "bigquery_status",
     "graph_neighborhood",
+    "ar_exception_queue_summary",
 }
 
 

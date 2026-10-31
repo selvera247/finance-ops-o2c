@@ -222,3 +222,125 @@ def deal_closed_won_handlers() -> dict[str, StepFn]:
         "fetch_line_items": step_line_items,
         "flag_review": step_flag_review,
     }
+
+
+def ar_exception_triage_handlers() -> dict[str, StepFn]:
+    """Slice 2 DAG: ERP/HubSpot feed → triage suggestions → optional HITL → queue metrics.
+
+    Never applies payment matches. HITL open is opt-in via meta.request_hitl.
+    """
+
+    def step_ingest_feed(state: WorkflowState) -> dict[str, Any]:
+        from finance_ops.runtime.ar_feed import ingest_erp_payment_csv, stage_sample_erp_feed
+
+        # Explicit stage only — ingest never auto-restages demo CSV in prod.
+        if state.meta.get("stage_sample", True):
+            staged = stage_sample_erp_feed()
+            state.meta["feed_staged"] = staged
+        path = state.meta.get("erp_csv_path")
+        out = ingest_erp_payment_csv(
+            path, auto_stage_sample=False
+        )
+        if out.get("status") != "success":
+            raise RuntimeError(out.get("error") or "erp_feed_ingest_failed")
+        state.meta["feed_ingest"] = out
+        return {
+            "count": out.get("count"),
+            "payment_ids": out.get("payment_ids"),
+            "row_error_count": len(out.get("row_errors") or []),
+        }
+
+    def step_triage_cash_app(state: WorkflowState) -> dict[str, Any]:
+        from finance_ops.runtime.ar_feed import triage_unmatched_payments
+
+        payment_ids = (state.meta.get("feed_ingest") or {}).get("payment_ids")
+        out = triage_unmatched_payments(payment_ids=payment_ids)
+        state.meta["cash_app_triage"] = out
+        return {
+            "payment_count": out.get("payment_count"),
+            "ready_count": out.get("ready_count"),
+        }
+
+    def step_triage_hubspot_gaps(state: WorkflowState) -> dict[str, Any]:
+        from data_plane import repository as repo
+        from finance_ops.runtime.ar_feed import triage_hubspot_gaps
+
+        feed_ids = (state.meta.get("feed_ingest") or {}).get("payment_ids") or []
+        customers: list[str] = []
+        for pid in feed_ids:
+            row = repo.get_payment(str(pid))
+            if row and row.get("customer_id"):
+                customers.append(str(row["customer_id"]).upper())
+        customer_ids = sorted(set(customers)) or None
+        out = triage_hubspot_gaps(
+            customer_ids=customer_ids,
+            use_live_hubspot=bool(state.meta.get("use_live_hubspot", True)),
+        )
+        state.meta["hubspot_gaps"] = out
+        return {"gap_count": out.get("gap_count"), "mode": out.get("mode")}
+
+    def step_optional_hitl(state: WorkflowState) -> dict[str, Any]:
+        if not state.meta.get("request_hitl"):
+            return {"skipped": True, "opened_count": 0}
+        from finance_ops.runtime.ar_feed import open_hitl_for_ready
+        from finance_ops.services.queue_service import mark_pending_hitl
+
+        ready = (state.meta.get("cash_app_triage") or {}).get("ready_for_hitl") or []
+        out = open_hitl_for_ready(
+            ready,
+            notify_slack=bool(state.meta.get("notify_slack", False)),
+        )
+        for opened in out.get("opened") or []:
+            if opened.get("status") == "pending" and opened.get("approval_id"):
+                mark_pending_hitl(
+                    source_id=str(opened.get("payment_id") or ""),
+                    lane="cash_app",
+                    approval_id=str(opened["approval_id"]),
+                )
+        state.meta["hitl_opened"] = out
+        return out
+
+    def step_sync_exceptions(state: WorkflowState) -> dict[str, Any]:
+        from finance_ops.services.queue_service import sync_from_warehouse
+
+        payment_ids = (state.meta.get("feed_ingest") or {}).get("payment_ids")
+        out = sync_from_warehouse(
+            workflow_run_id=state.run_id,
+            payment_ids=payment_ids,
+            include_portal=True,
+            include_hubspot_gaps=True,
+        )
+        state.meta["exception_sync"] = out
+        return {
+            "synced_count": out.get("synced_count"),
+            "hubspot_gap_count": out.get("hubspot_gap_count"),
+        }
+
+    def step_queue_snapshot(state: WorkflowState) -> dict[str, Any]:
+        from finance_ops.services.queue_service import queue_metrics
+
+        metrics_full = queue_metrics(use_cache=False)
+        metrics = metrics_full.get("legacy_metrics") or {}
+        state.meta["queue_metrics"] = metrics
+        state.meta["queue_projection"] = metrics_full.get("projection")
+        return {
+            "matched_usd": metrics.get("matched_usd"),
+            "open_exception_usd": (metrics_full.get("projection") or {}).get(
+                "open_exception_usd"
+            ),
+            "pending_approvals": metrics.get("pending_approvals"),
+            "exception_count": (metrics_full.get("projection") or {}).get(
+                "exception_count"
+            ),
+            "needs_review": metrics_full.get("needs_review"),
+        }
+
+    return {
+        "ingest_ar_feed": step_ingest_feed,
+        "triage_cash_app": step_triage_cash_app,
+        "triage_hubspot_gaps": step_triage_hubspot_gaps,
+        # Sync before HITL so mark_pending_hitl updates existing queue rows.
+        "sync_exceptions": step_sync_exceptions,
+        "optional_hitl": step_optional_hitl,
+        "queue_snapshot": step_queue_snapshot,
+    }

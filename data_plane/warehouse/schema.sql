@@ -116,3 +116,40 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   started_at TIMESTAMP,
   finished_at TIMESTAMP
 );
+
+-- Product queue projection (cash-app / portal / HubSpot gap exceptions)
+CREATE TABLE IF NOT EXISTS ar_exceptions (
+  exception_id VARCHAR PRIMARY KEY,
+  lane VARCHAR,
+  source_type VARCHAR,
+  source_id VARCHAR,
+  customer_id VARCHAR,
+  amount DOUBLE,
+  currency VARCHAR,
+  status VARCHAR,
+  disposition VARCHAR,
+  recommended_invoice_id VARCHAR,
+  match_score DOUBLE,
+  match_reasons_json VARCHAR,
+  approval_id VARCHAR,
+  workflow_run_id VARCHAR,
+  evidence_id VARCHAR,
+  sku_code VARCHAR,
+  payload_json VARCHAR,
+  opened_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  resolved_at TIMESTAMP
+);
+
+-- Outcome metering for paid SKUs (provisional → billable on resolve)
+CREATE TABLE IF NOT EXISTS sku_meter_events (
+  event_id VARCHAR PRIMARY KEY,
+  sku_code VARCHAR,
+  exception_id VARCHAR,
+  customer_id VARCHAR,
+  quantity DOUBLE,
+  unit VARCHAR,
+  status VARCHAR,
+  created_at TIMESTAMP,
+  meta_json VARCHAR
+);
