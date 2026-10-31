@@ -1,4 +1,7 @@
-"""L6 Cloud Run HTTP surface — health + platform status + tool smokes.
+"""L6 Cloud Run HTTP surface — health + free AR visibility + gated writes.
+
+Free (no auth): health, status, aging, suggest, AR list/metrics/skus/queue.
+Paid / ops writes: require FINANCE_OPS_API_TOKEN (Bearer or X-API-Token).
 
 Run locally:
   uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
@@ -15,7 +18,56 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="finance_ops", version="0.6.0")
+app = FastAPI(title="finance_ops", version="0.7.0")
+
+
+def _bearer_or_header_token(
+    authorization: str | None,
+    header_token: str | None,
+) -> str:
+    provided = (header_token or "").strip()
+    if provided:
+        return provided
+    if authorization:
+        auth = authorization.strip()
+        if auth.lower().startswith("bearer "):
+            return auth[7:].strip()
+    return ""
+
+
+def _write_token_expected() -> str:
+    """API write token; falls back to governance token if only that is set."""
+    return (
+        os.getenv("FINANCE_OPS_API_TOKEN", "").strip()
+        or os.getenv("FINANCE_OPS_GOVERNANCE_TOKEN", "").strip()
+    )
+
+
+def _writes_locked() -> bool:
+    """Lock mutating routes on Cloud Run, or when explicitly enabled / token set."""
+    if os.getenv("FINANCE_OPS_LOCK_WRITES", "").lower() in {"1", "true", "yes"}:
+        return True
+    if _write_token_expected():
+        return True
+    # Cloud Run always sets K_SERVICE — fail closed for free-wedge demos.
+    if os.getenv("K_SERVICE", "").strip():
+        return True
+    return False
+
+
+def write_auth_status() -> dict[str, Any]:
+    locked = _writes_locked()
+    return {
+        "writes_locked": locked,
+        "token_configured": bool(_write_token_expected()),
+        "free_tier": "visibility",
+        "hint": (
+            "GET /v1/ar/* + suggest/aging are free; "
+            "mutating routes need Authorization: Bearer <FINANCE_OPS_API_TOKEN>"
+            if locked
+            else "local/dev: writes open (set FINANCE_OPS_API_TOKEN or LOCK_WRITES=1)"
+        ),
+    }
 
 
 def _require_governance_token(
@@ -29,13 +81,40 @@ def _require_governance_token(
             status_code=503,
             detail="governance token not configured (FINANCE_OPS_GOVERNANCE_TOKEN)",
         )
-    provided = (x_governance_token or "").strip()
-    if not provided and authorization:
-        auth = authorization.strip()
-        if auth.lower().startswith("bearer "):
-            provided = auth[7:].strip()
+    provided = _bearer_or_header_token(authorization, x_governance_token)
     if not provided or not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="unauthorized governance call")
+
+
+def _require_write_token(
+    authorization: str | None = None,
+    x_api_token: str | None = None,
+) -> None:
+    """Gate paid/ops mutating routes (HITL apply, sync, triage, bootstrap).
+
+    - Token set or Cloud Run (K_SERVICE) or FINANCE_OPS_LOCK_WRITES → require auth
+    - Local/dev with no token and no lock → allow (pytest / uvicorn smoke)
+    """
+    if not _writes_locked():
+        return
+    expected = _write_token_expected()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "write auth not configured — set FINANCE_OPS_API_TOKEN "
+                "(or FINANCE_OPS_GOVERNANCE_TOKEN) on Cloud Run"
+            ),
+        )
+    provided = _bearer_or_header_token(authorization, x_api_token)
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "unauthorized write — free tier is read/suggest only; "
+                "send Authorization: Bearer <token> or X-API-Token"
+            ),
+        )
 
 
 class SearchBody(BaseModel):
@@ -73,6 +152,7 @@ def health() -> dict[str, Any]:
         "service": "finance_ops",
         "model": os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite"),
         "data_mode": os.getenv("FINANCE_OPS_DATA_MODE", "warehouse"),
+        "auth": write_auth_status(),
     }
 
 
@@ -87,6 +167,7 @@ def platform_status() -> dict[str, Any]:
         "warehouse": bigquery_status(),
         "vectors": vertex_vector_status(),
         "graph": graph_status(),
+        "auth": write_auth_status(),
     }
 
 
@@ -121,8 +202,13 @@ class ArTriageBody(BaseModel):
 
 @app.post("/v1/ar_exception_triage")
 @app.post("/v1/ar/triage")
-def api_ar_exception_triage(body: ArTriageBody | None = None) -> dict[str, Any]:
-    """Slice 2 — ERP/HubSpot feed into durable triage (no auto-apply)."""
+def api_ar_exception_triage(
+    body: ArTriageBody | None = None,
+    authorization: str | None = Header(default=None),
+    x_api_token: str | None = Header(default=None, alias="X-API-Token"),
+) -> dict[str, Any]:
+    """Slice 2 — ERP/HubSpot feed into durable triage (no auto-apply). Write-gated."""
+    _require_write_token(authorization, x_api_token)
     from finance_ops.tools.queue_tools import start_ar_exception_triage
 
     body = body or ArTriageBody()
@@ -157,8 +243,12 @@ def api_ar_get_exception(exception_id: str) -> dict[str, Any]:
 
 
 @app.post("/v1/ar/exceptions/sync")
-def api_ar_sync_exceptions() -> dict[str, Any]:
-    """Materialise open exceptions from warehouse payments / portal / gaps."""
+def api_ar_sync_exceptions(
+    authorization: str | None = Header(default=None),
+    x_api_token: str | None = Header(default=None, alias="X-API-Token"),
+) -> dict[str, Any]:
+    """Materialise open exceptions from warehouse payments / portal / gaps. Write-gated."""
+    _require_write_token(authorization, x_api_token)
     from finance_ops.services.queue_service import sync_from_warehouse
 
     return sync_from_warehouse()
@@ -180,7 +270,12 @@ def api_ar_skus() -> dict[str, Any]:
 
 
 @app.post("/v1/request_approval")
-def api_request_approval(body: ApprovalBody) -> dict[str, Any]:
+def api_request_approval(
+    body: ApprovalBody,
+    authorization: str | None = Header(default=None),
+    x_api_token: str | None = Header(default=None, alias="X-API-Token"),
+) -> dict[str, Any]:
+    _require_write_token(authorization, x_api_token)
     from finance_ops.tools.runtime_tools import request_approval
 
     return request_approval(
@@ -193,20 +288,32 @@ def api_request_approval(body: ApprovalBody) -> dict[str, Any]:
 
 @app.post("/v1/suggest_payment_match")
 def api_suggest_payment_match(body: PaymentMatchBody) -> dict[str, Any]:
+    """Free wedge — suggest only (no apply / no HITL)."""
     from finance_ops.tools.payment_tools import suggest_payment_match
 
     return suggest_payment_match(body.payment_id)
 
 
 @app.post("/v1/request_cash_app_approval")
-def api_request_cash_app_approval(body: PaymentMatchBody) -> dict[str, Any]:
+def api_request_cash_app_approval(
+    body: PaymentMatchBody,
+    authorization: str | None = Header(default=None),
+    x_api_token: str | None = Header(default=None, alias="X-API-Token"),
+) -> dict[str, Any]:
+    """Paid path — opens HITL / may apply. Requires write token on Cloud Run."""
+    _require_write_token(authorization, x_api_token)
     from finance_ops.tools.payment_tools import request_cash_app_approval
 
     return request_cash_app_approval(body.payment_id, invoice_id=body.invoice_id or "")
 
 
 @app.post("/v1/decide_approval")
-def api_decide_approval(body: DecideBody) -> dict[str, Any]:
+def api_decide_approval(
+    body: DecideBody,
+    authorization: str | None = Header(default=None),
+    x_api_token: str | None = Header(default=None, alias="X-API-Token"),
+) -> dict[str, Any]:
+    _require_write_token(authorization, x_api_token)
     from finance_ops.tools.runtime_tools import decide_approval
 
     return decide_approval(
@@ -218,8 +325,12 @@ def api_decide_approval(body: DecideBody) -> dict[str, Any]:
 
 
 @app.post("/v1/bootstrap")
-def api_bootstrap() -> dict[str, Any]:
+def api_bootstrap(
+    authorization: str | None = Header(default=None),
+    x_api_token: str | None = Header(default=None, alias="X-API-Token"),
+) -> dict[str, Any]:
     """Idempotent warehouse + vector + graph sync for cold Cloud Run instances."""
+    _require_write_token(authorization, x_api_token)
     from data_plane.graph.sync import sync_knowledge_graph
     from data_plane.vectors.embed import build_policy_index
     from pipelines.batch.ingest import ingest_batch

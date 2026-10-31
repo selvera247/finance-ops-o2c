@@ -65,16 +65,19 @@
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/v1/ar/exceptions` | public demo* | List queue (`status`, `lane`, `limit`) |
-| `GET` | `/v1/ar/exceptions/{id}` | public demo* | Fetch one exception |
-| `POST` | `/v1/ar/exceptions/sync` | public demo* | Materialize open exceptions from warehouse |
-| `GET` | `/v1/ar/metrics` | public demo* | Cached queue metrics |
-| `GET` | `/v1/ar/skus` | public demo* | SKU catalog |
-| `POST` | `/v1/ar/triage` | public demo* | Alias of durable feed triage |
-| `POST` | `/v1/request_cash_app_approval` | public demo* | Paid path entry (HITL) |
-| `POST` | `/v1/decide_approval` | public demo* | Human decision → apply |
+| `GET` | `/v1/ar/exceptions` | **free** | List queue (`status`, `lane`, `limit`) |
+| `GET` | `/v1/ar/exceptions/{id}` | **free** | Fetch one exception |
+| `GET` | `/v1/ar/metrics` | **free** | Cached queue metrics |
+| `GET` | `/v1/ar/skus` | **free** | SKU catalog (shows free vs paid) |
+| `GET` | `/v1/ar_exception_queue` | **free** | Story + Spike aggregates |
+| `POST` | `/v1/suggest_payment_match` | **free** | Suggest only — no apply |
+| `POST` | `/v1/aging` | **free** | Aging summary |
+| `POST` | `/v1/ar/exceptions/sync` | **write token** | Materialize open exceptions |
+| `POST` | `/v1/ar/triage` | **write token** | Durable feed triage |
+| `POST` | `/v1/request_cash_app_approval` | **write token** | Paid HITL entry |
+| `POST` | `/v1/decide_approval` | **write token** | Human decision → apply |
 
-\*Cloud Run demo is open today; production locks mutating routes behind identity (IAM / API key) — same pattern as governance token.
+**Write auth:** `FINANCE_OPS_API_TOKEN` (or governance token fallback) via `Authorization: Bearer …` or `X-API-Token`. On Cloud Run (`K_SERVICE`) writes fail closed (401/503) until configured — free GETs stay public. See `/health` → `auth`.
 
 ---
 
