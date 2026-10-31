@@ -123,6 +123,7 @@ HITL_PUBLIC_BASE_URL=https://your-public-host   # signed webhook URI base
 - **MVP architecture:** [docs/architecture-ar-queue.md](docs/architecture-ar-queue.md) · `GET /v1/ar/exceptions` · `GET /v1/ar/metrics` · `GET /v1/ar/skus`
 - **Queue perf:** [docs/performance-ar-queue.md](docs/performance-ar-queue.md) — batch score/upsert, PK lookups, cache-before-ensure
 - **Clean architecture:** [docs/clean-architecture-ar-queue.md](docs/clean-architecture-ar-queue.md) — `finance_ops/ar_queue` domain · application · ports · adapters
+- **Cloud Run free tier:** [docs/cloud-run-free-tier.md](docs/cloud-run-free-tier.md) — public GETs; writes need `FINANCE_OPS_API_TOKEN`
 - **Checklist:** [docs/master-layer-complete.md](docs/master-layer-complete.md)
 - **L7 narrative:** [docs/cfo-cto-one-pager.md](docs/cfo-cto-one-pager.md)
 - **L3 BigQuery:** [docs/bigquery-l3.md](docs/bigquery-l3.md) · `scripts/smoke_master_layer.py`
