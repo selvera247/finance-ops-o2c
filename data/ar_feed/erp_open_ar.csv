@@ -1,0 +1,5 @@
+invoice_id,customer_id,customer_name,amount,currency,status,due_date,po_number
+INV-84219,C-1042,Acme North,1842.50,USD,open,2026-11-15,PO-1042-A
+INV-90001,C-1042,Acme North,5000.00,USD,past_due,2026-09-01,PO-1042-B
+INV-99101,C-2099,Beacon Labs,3200.00,USD,open,2026-12-01,PO-99101
+INV-70001,C-2099,Beacon Labs,890.00,USD,open,2026-10-20,

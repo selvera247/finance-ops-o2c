@@ -15,7 +15,7 @@ import hmac
 import os
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="finance_ops", version="0.7.0")
@@ -62,8 +62,8 @@ def write_auth_status() -> dict[str, Any]:
         "token_configured": bool(_write_token_expected()),
         "free_tier": "visibility",
         "hint": (
-            "GET /v1/ar/* + suggest/aging are free; "
-            "mutating routes need Authorization: Bearer <FINANCE_OPS_API_TOKEN>"
+            "Free: GET /v1/ar/*, suggest/aging, POST /v1/ar/free_visibility (two CSVs). "
+            "Mutating routes need Authorization: Bearer <FINANCE_OPS_API_TOKEN>"
             if locked
             else "local/dev: writes open (set FINANCE_OPS_API_TOKEN or LOCK_WRITES=1)"
         ),
@@ -267,6 +267,31 @@ def api_ar_skus() -> dict[str, Any]:
     from finance_ops.services.sku_catalog import list_skus
 
     return list_skus()
+
+
+@app.post("/v1/ar/free_visibility")
+async def api_ar_free_visibility(
+    payments_csv: UploadFile = File(..., description="Unmatched payments CSV"),
+    invoices_csv: UploadFile = File(..., description="Open AR / invoices CSV"),
+    company_name: str = Form(default=""),
+    top_n: int = Form(default=15),
+) -> dict[str, Any]:
+    """Free wedge — drop two CSVs, get suggestions + email markdown. No apply / no auth."""
+    from finance_ops.runtime.free_csv_drop import run_free_csv_drop
+
+    payments_bytes = await payments_csv.read()
+    invoices_bytes = await invoices_csv.read()
+    if not payments_bytes or not invoices_bytes:
+        raise HTTPException(status_code=400, detail="both CSV uploads are required")
+    report = run_free_csv_drop(
+        payments_csv=payments_bytes,
+        invoices_csv=invoices_bytes,
+        company_name=company_name.strip() or None,
+        top_n=top_n,
+    )
+    if report.get("status") != "success":
+        raise HTTPException(status_code=400, detail=report)
+    return report
 
 
 @app.post("/v1/request_approval")

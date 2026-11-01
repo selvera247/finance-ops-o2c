@@ -1,21 +1,29 @@
-# Slice 2 — live AR feed samples
-
-Drop ERP unmatched-payment exports here (or into `data/incoming/ar_exceptions/`)
-and/or use the HubSpot gap fixture when no live HubSpot token is configured.
+# AR feed samples + free CSV drop
 
 | File | Role |
 | --- | --- |
-| `erp_unmatched_payments.csv` | ERP/lockbox-shaped unmatched cash → warehouse payments |
-| `hubspot_gaps.json` | Fixture closed-won sold amounts by `customer_id` (offline HubSpot gap path) |
+| `erp_unmatched_payments.csv` | Unmatched cash sample |
+| `erp_open_ar.csv` | Open AR / invoices sample |
+| `hubspot_gaps.json` | Offline HubSpot sold amounts |
 
-## Run durable triage
+## Free visibility (two CSVs → report)
+
+```bash
+PYTHONPATH=. python scripts/free_visibility_report.py \
+  --payments data/ar_feed/erp_unmatched_payments.csv \
+  --invoices data/ar_feed/erp_open_ar.csv \
+  --company "Demo" \
+  --out /tmp/free_visibility.md
+```
+
+Docs: [docs/free-csv-drop.md](../../docs/free-csv-drop.md)
+
+## Durable triage (warehouse)
+
+Drop payments into `data/incoming/ar_exceptions/` or:
 
 ```bash
 PYTHONPATH=. python scripts/run_ar_feed_triage.py
-# or stage a custom CSV first:
-cp /path/to/export.csv data/incoming/ar_exceptions/
-PYTHONPATH=. python scripts/run_ar_feed_triage.py --no-sample
 ```
 
-Does **not** apply matches. High-confidence suggestions can open HITL via
-`request_cash_app_approval` when `--request-hitl` is set.
+Does **not** apply matches. HITL apply stays behind write token / Slack Approve.

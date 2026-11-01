@@ -51,6 +51,8 @@ Canonical brief: **[ar-exception-queue.md](ar-exception-queue.md)**
 | Queue projection | **MVP** | `ar_exceptions` table + `/v1/ar/*` APIs + TTL cache |
 | Queue perf | **Done** | Batch score/upsert, PK lookups, cache-before-ensure — [performance-ar-queue.md](performance-ar-queue.md) |
 | Clean architecture | **Done** | `finance_ops/ar_queue` domain/app/ports/adapters — [clean-architecture-ar-queue.md](clean-architecture-ar-queue.md) |
+| Free Cloud Run wedge | **Done** | Public GETs/suggest; writes locked (`FINANCE_OPS_API_TOKEN`) |
+| Free two-CSV drop | **Done** | Unmatched + open AR → report — [free-csv-drop.md](free-csv-drop.md) |
 | Pilot | Pending | One AR team / carrier-payer; no per-seat dashboard lead |
 | Studio expansion | Later | Portal remittance / leakage / collections **after** queue conversion |
 
