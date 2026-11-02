@@ -21,8 +21,9 @@ curl -s -X POST "$BASE/v1/suggest_payment_match" \
 
 Also free:
 - `POST /v1/aging`, `GET /docs`
+- **`GET /leakage`** — self-serve sold-vs-invoiced upload page (no account)
 - **`POST /v1/ar/free_visibility`** — cash-app suggestions ([free-csv-drop.md](free-csv-drop.md))
-- **`POST /v1/ar/free_leakage`** — sold vs invoiced gaps ([free-leakage-share-pack.md](free-leakage-share-pack.md))
+- **`POST /v1/ar/free_leakage`** — sold vs invoiced API used by `/leakage` ([free-leakage-share-pack.md](free-leakage-share-pack.md))
 
 ## Paid / ops (token required)
 

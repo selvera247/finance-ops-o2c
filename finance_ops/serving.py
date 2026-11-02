@@ -13,12 +13,17 @@ from __future__ import annotations
 
 import hmac
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="finance_ops", version="0.7.0")
+
+_WEB_DIR = Path(__file__).resolve().parent / "web"
+_LEAKAGE_PAGE = _WEB_DIR / "leakage.html"
 
 
 def _bearer_or_header_token(
@@ -62,7 +67,7 @@ def write_auth_status() -> dict[str, Any]:
         "token_configured": bool(_write_token_expected()),
         "free_tier": "visibility",
         "hint": (
-            "Free: GET /v1/ar/*, suggest/aging, "
+            "Free: GET /leakage (self-serve upload), GET /v1/ar/*, suggest/aging, "
             "POST /v1/ar/free_visibility (cash) or /v1/ar/free_leakage (sold vs invoiced). "
             "Mutating routes need Authorization: Bearer <FINANCE_OPS_API_TOKEN>"
             if locked
@@ -146,6 +151,18 @@ class DecideBody(BaseModel):
     actor: str = "api"
 
 
+@app.get("/leakage")
+def leakage_self_serve() -> FileResponse:
+    """Browser self-serve: upload closed-won + invoices → gap report. No account."""
+    if not _LEAKAGE_PAGE.is_file():
+        raise HTTPException(status_code=404, detail="leakage page missing")
+    return FileResponse(
+        _LEAKAGE_PAGE,
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -154,6 +171,7 @@ def health() -> dict[str, Any]:
         "model": os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite"),
         "data_mode": os.getenv("FINANCE_OPS_DATA_MODE", "warehouse"),
         "auth": write_auth_status(),
+        "self_serve": {"leakage": "/leakage"},
     }
 
 

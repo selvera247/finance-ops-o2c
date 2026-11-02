@@ -56,3 +56,22 @@ def test_http_free_leakage() -> None:
     body = res.json()
     assert body["status"] == "success"
     assert body["summary"]["company_name"] == "HTTP Leak"
+
+
+def test_leakage_self_serve_page() -> None:
+    from finance_ops.serving import app
+
+    client = TestClient(app)
+    res = client.get("/leakage")
+    assert res.status_code == 200
+    assert "text/html" in res.headers.get("content-type", "")
+    html = res.text
+    assert "Finance Ops" in html
+    assert 'id="leak-form"' in html
+    assert "/v1/ar/free_leakage" in html
+    assert 'name="closed_won_csv"' in html
+    assert 'name="invoices_csv"' in html
+
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.json().get("self_serve", {}).get("leakage") == "/leakage"

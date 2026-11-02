@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Finance Ops — Sold vs invoiced leakage</title>
+  <meta name="description" content="Upload closed-won and invoices. See sold vs invoiced leakage by customer — free, no account, nothing written to your ERP." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0b1c24;
+      --ink-soft: #1a3540;
+      --fog: #d7e4e8;
+      --mist: #eef4f6;
+      --paper: #f7fbfc;
+      --teal: #0f7a72;
+      --teal-deep: #0a5c56;
+      --amber: #c47a1a;
+      --danger: #9b2c2c;
+      --line: rgba(11, 28, 36, 0.12);
+      --glow: rgba(15, 122, 114, 0.18);
+      --font-brand: "Syne", sans-serif;
+      --font-body: "Public Sans", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--font-body);
+      background:
+        radial-gradient(1200px 700px at 12% -10%, rgba(15, 122, 114, 0.22), transparent 55%),
+        radial-gradient(900px 600px at 95% 8%, rgba(196, 122, 26, 0.14), transparent 50%),
+        linear-gradient(165deg, #e8f1f3 0%, var(--paper) 42%, #e4eef1 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      background-image:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 80% 70% at 50% 20%, #000 20%, transparent 75%);
+      animation: gridDrift 28s linear infinite;
+    }
+
+    @keyframes gridDrift {
+      from { background-position: 0 0, 0 0; }
+      to { background-position: 48px 24px, 24px 48px; }
+    }
+
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes resultIn {
+      from { opacity: 0; transform: translateY(28px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(920px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: clamp(2.5rem, 8vh, 5.5rem) 0 4rem;
+    }
+
+    .hero {
+      animation: riseIn 0.7s ease-out both;
+    }
+
+    .brand {
+      font-family: var(--font-brand);
+      font-weight: 800;
+      font-size: clamp(2.4rem, 7vw, 4.25rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+      margin: 0 0 1.25rem;
+    }
+
+    .brand span {
+      display: block;
+      color: var(--teal-deep);
+    }
+
+    .lede {
+      max-width: 34rem;
+      margin: 0 0 2rem;
+      font-size: clamp(1.05rem, 2.4vw, 1.2rem);
+      line-height: 1.45;
+      color: var(--ink-soft);
+      animation: riseIn 0.75s ease-out 0.08s both;
+    }
+
+    .lede strong { color: var(--ink); font-weight: 600; }
+
+    .drop {
+      animation: riseIn 0.8s ease-out 0.16s both;
+      display: grid;
+      gap: 1rem;
+      max-width: 36rem;
+    }
+
+    .drop label {
+      display: grid;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      color: var(--ink-soft);
+    }
+
+    .drop input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(247, 251, 252, 0.85);
+      padding: 0.85rem 1rem;
+      font: inherit;
+      color: var(--ink);
+      border-radius: 2px;
+    }
+
+    .drop input[type="text"]:focus {
+      outline: 2px solid var(--teal);
+      outline-offset: 1px;
+    }
+
+    .file-row {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    @media (min-width: 640px) {
+      .file-row { grid-template-columns: 1fr 1fr; }
+    }
+
+    .file-field {
+      position: relative;
+      min-height: 7.5rem;
+      border: 1.5px dashed rgba(15, 122, 114, 0.45);
+      background: rgba(255, 255, 255, 0.55);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0.35rem;
+      transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .file-field:hover,
+    .file-field:focus-within {
+      border-color: var(--teal);
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: 0 0 0 4px var(--glow);
+    }
+
+    .file-field.is-filled {
+      border-style: solid;
+      border-color: var(--teal-deep);
+    }
+
+    .file-field input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .file-field .hint {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: rgba(26, 53, 64, 0.7);
+    }
+
+    .file-field .name {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--ink);
+      word-break: break-all;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem 1.25rem;
+      margin-top: 0.35rem;
+    }
+
+    button[type="submit"] {
+      appearance: none;
+      border: 0;
+      cursor: pointer;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: var(--font-brand);
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+      padding: 0.95rem 1.4rem;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    button[type="submit"]:hover { background: var(--teal-deep); transform: translateY(-1px); }
+    button[type="submit"]:disabled { opacity: 0.55; cursor: wait; transform: none; }
+
+    .reassure {
+      font-size: 0.85rem;
+      color: rgba(26, 53, 64, 0.75);
+      max-width: 18rem;
+      line-height: 1.35;
+    }
+
+    .err {
+      margin-top: 0.75rem;
+      color: var(--danger);
+      font-size: 0.92rem;
+      font-weight: 500;
+      min-height: 1.25rem;
+    }
+
+    .how {
+      margin-top: clamp(3rem, 8vh, 5rem);
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--line);
+      max-width: 40rem;
+      animation: riseIn 0.9s ease-out 0.28s both;
+    }
+
+    .how h2 {
+      font-family: var(--font-brand);
+      font-size: 1.15rem;
+      margin: 0 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
+
+    .how ol {
+      margin: 0;
+      padding-left: 1.15rem;
+      color: var(--ink-soft);
+      line-height: 1.55;
+    }
+
+    .how li { margin-bottom: 0.35rem; }
+    .how code {
+      font-size: 0.86em;
+      background: rgba(11, 28, 36, 0.06);
+      padding: 0.1em 0.35em;
+    }
+
+    .results {
+      display: none;
+      margin-top: clamp(2.5rem, 7vh, 4rem);
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .results.is-open {
+      display: block;
+      animation: resultIn 0.55s ease-out both;
+    }
+
+    .results h2 {
+      font-family: var(--font-brand);
+      font-size: clamp(1.5rem, 3.5vw, 2rem);
+      letter-spacing: -0.03em;
+      margin: 0 0 0.35rem;
+    }
+
+    .results .sub {
+      margin: 0 0 1.5rem;
+      color: var(--ink-soft);
+    }
+
+    .snap {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem 1.5rem;
+      margin-bottom: 1.75rem;
+    }
+
+    @media (min-width: 640px) {
+      .snap { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    .snap div strong {
+      display: block;
+      font-family: var(--font-brand);
+      font-size: clamp(1.25rem, 2.5vw, 1.55rem);
+      letter-spacing: -0.03em;
+      margin-bottom: 0.15rem;
+    }
+
+    .snap div span {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(26, 53, 64, 0.65);
+    }
+
+    .snap .leak strong { color: var(--amber); }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.55rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(26, 53, 64, 0.65);
+      font-weight: 600;
+    }
+
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    th.num { text-align: right; }
+
+    .flags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .flag {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.4rem;
+      background: rgba(15, 122, 114, 0.12);
+      color: var(--teal-deep);
+    }
+
+    .cta-paid {
+      margin-top: 1.75rem;
+      padding: 1.1rem 0 0;
+      border-top: 1px solid var(--line);
+      color: var(--ink-soft);
+      line-height: 1.45;
+      max-width: 36rem;
+    }
+
+    .cta-paid a {
+      color: var(--teal-deep);
+      font-weight: 600;
+    }
+
+    .download {
+      margin-top: 1rem;
+    }
+
+    .download button {
+      appearance: none;
+      border: 1px solid var(--ink);
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+    }
+
+    .download button:hover { background: var(--ink); color: var(--paper); }
+
+    footer {
+      margin-top: 3rem;
+      font-size: 0.8rem;
+      color: rgba(26, 53, 64, 0.55);
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero" aria-labelledby="brand">
+      <h1 class="brand" id="brand">Finance Ops<span>Sold vs invoiced</span></h1>
+      <p class="lede">
+        Drop closed-won and invoices — see <strong>leakage by customer</strong>.
+        No account. Nothing is billed or credited in your ERP.
+      </p>
+
+      <form class="drop" id="leak-form" novalidate>
+        <label>
+          Company name
+          <input type="text" name="company_name" id="company_name" placeholder="Acme Corp" autocomplete="organization" />
+        </label>
+
+        <div class="file-row">
+          <label class="file-field" id="won-field">
+            <span class="name" id="won-label">Closed-won CSV</span>
+            <span class="hint">CRM export · customer_id + sold/amount</span>
+            <input type="file" name="closed_won_csv" id="closed_won_csv" accept=".csv,text/csv" required />
+          </label>
+          <label class="file-field" id="inv-field">
+            <span class="name" id="inv-label">Invoices CSV</span>
+            <span class="hint">ERP AR · invoice_id + customer_id + amount</span>
+            <input type="file" name="invoices_csv" id="invoices_csv" accept=".csv,text/csv" required />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="submit-btn">Show leakage</button>
+          <p class="reassure">Free visibility only. Resolve (invoice / credit ops) is a separate paid path.</p>
+        </div>
+        <p class="err" id="err" role="alert" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="how" aria-labelledby="how-title">
+      <h2 id="how-title">What to export</h2>
+      <ol>
+        <li><strong>CRM</strong> — Closed Won deals: <code>customer_id</code> (ERP id preferred), amount, optional company name.</li>
+        <li><strong>ERP</strong> — Invoice / AR list: <code>invoice_id</code>, same <code>customer_id</code>, amount, status.</li>
+        <li>IDs must align across both files. Templates available on request.</li>
+      </ol>
+    </section>
+
+    <section class="results" id="results" aria-live="polite">
+      <h2 id="results-title">Your leakage readout</h2>
+      <p class="sub" id="results-sub"></p>
+      <div class="snap" id="snap"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Company</th>
+              <th class="num">Sold</th>
+              <th class="num">Invoiced</th>
+              <th class="num">Leakage</th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody id="gaps-body"></tbody>
+        </table>
+      </div>
+      <div class="download">
+        <button type="button" id="dl-md">Download markdown</button>
+      </div>
+      <p class="cta-paid">
+        Want these gaps closed? Paid path is <strong>resolve leakage</strong> (invoice missing revenue / credit overbill) with human review — not another dashboard seat.
+        Reply from the outreach thread or email your contact to start a pilot.
+      </p>
+    </section>
+
+    <footer>Finance Ops · free.visibility · sold_vs_invoiced</footer>
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById("leak-form");
+      const err = document.getElementById("err");
+      const btn = document.getElementById("submit-btn");
+      const results = document.getElementById("results");
+      const snap = document.getElementById("snap");
+      const gapsBody = document.getElementById("gaps-body");
+      const resultsSub = document.getElementById("results-sub");
+      const dlBtn = document.getElementById("dl-md");
+      let lastMarkdown = "";
+
+      function money(n) {
+        const v = Number(n) || 0;
+        return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
+      }
+
+      function wireFile(inputId, fieldId, labelId, fallback) {
+        const input = document.getElementById(inputId);
+        const field = document.getElementById(fieldId);
+        const label = document.getElementById(labelId);
+        input.addEventListener("change", () => {
+          const f = input.files && input.files[0];
+          label.textContent = f ? f.name : fallback;
+          field.classList.toggle("is-filled", !!f);
+        });
+      }
+
+      wireFile("closed_won_csv", "won-field", "won-label", "Closed-won CSV");
+      wireFile("invoices_csv", "inv-field", "inv-label", "Invoices CSV");
+
+      function renderReport(body) {
+        const s = body.summary || {};
+        resultsSub.textContent = s.cta || "Free leakage visibility — nothing was invoiced or credited.";
+        snap.innerHTML = [
+          ["Customers", s.customer_count],
+          ["With gaps", s.gap_customer_count],
+          ["Sold", money(s.total_sold_usd)],
+          ["Leakage", money(s.positive_leakage_usd), "leak"],
+        ].map(([label, val, cls]) =>
+          `<div class="${cls || ""}"><strong>${val}</strong><span>${label}</span></div>`
+        ).join("");
+
+        const gaps = body.gaps || [];
+        gapsBody.innerHTML = gaps.length
+          ? gaps.map((g) => {
+              const flags = (g.gaps || []).map((f) => `<span class="flag">${f}</span>`).join("") || "—";
+              return `<tr>
+                <td>${g.customer_id || ""}</td>
+                <td>${g.company_name || ""}</td>
+                <td class="num">${money(g.sold)}</td>
+                <td class="num">${money(g.invoiced_total)}</td>
+                <td class="num">${money(g.leakage_usd)}</td>
+                <td><div class="flags">${flags}</div></td>
+              </tr>`;
+            }).join("")
+          : `<tr><td colspan="6">No material gaps above threshold.</td></tr>`;
+
+        lastMarkdown = body.markdown || "";
+        results.classList.add("is-open");
+        results.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.textContent = "";
+        const won = document.getElementById("closed_won_csv").files[0];
+        const inv = document.getElementById("invoices_csv").files[0];
+        if (!won || !inv) {
+          err.textContent = "Upload both CSVs to continue.";
+          return;
+        }
+        const fd = new FormData();
+        fd.append("closed_won_csv", won);
+        fd.append("invoices_csv", inv);
+        fd.append("company_name", document.getElementById("company_name").value.trim());
+
+        btn.disabled = true;
+        btn.textContent = "Reading…";
+        try {
+          const res = await fetch("/v1/ar/free_leakage", { method: "POST", body: fd });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const detail = body.detail;
+            err.textContent = typeof detail === "string"
+              ? detail
+              : (detail && detail.error) || body.error || "Upload failed. Check CSV columns and try again.";
+            results.classList.remove("is-open");
+            return;
+          }
+          renderReport(body);
+        } catch (ex) {
+          err.textContent = "Network error — try again in a moment.";
+          results.classList.remove("is-open");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Show leakage";
+        }
+      });
+
+      dlBtn.addEventListener("click", () => {
+        if (!lastMarkdown) return;
+        const blob = new Blob([lastMarkdown], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "sold-vs-invoiced-leakage.md";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    })();
+  </script>
+</body>
+</html>

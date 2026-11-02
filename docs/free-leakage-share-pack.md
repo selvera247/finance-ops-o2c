@@ -10,7 +10,9 @@ SKU surface: `free.visibility` · lane `sold_vs_invoiced`
 
 ## 1. One-liner
 
-> Send closed-won and invoices — we’ll show **sold vs invoiced leakage by customer** for free. Nothing is billed or credited. You pay only if you want us to help **resolve** the gaps.
+> Upload closed-won and invoices — see **sold vs invoiced leakage by customer** for free. No account. Nothing is billed or credited. You pay only if you want us to help **resolve** the gaps.
+
+**Self-serve (preferred):** https://finance-ops-301858971164.us-central1.run.app/leakage  
 
 ---
 
@@ -22,15 +24,16 @@ Hi {Name},
 
 A common O2C leak: **closed-won in CRM doesn’t match what was invoiced**.
 
-Free readout (no system access, nothing written to ERP):
+Self-serve (no login, nothing written to ERP):
 
-1. You send two exports (below)  
-2. We return customers with sold vs invoiced gaps and $ leakage  
-3. Suggestions / flags only — **no invoices or credits created**
+1. Open {LEAKAGE_URL}  
+2. Upload closed-won + invoices CSVs  
+3. See gap $ by customer — **no invoices or credits created**
 
 If the gaps matter, we can pilot **resolve** with human review (not another dashboard seat).
 
-Reply with the two CSVs + company name.
+{LEAKAGE_URL} = `https://finance-ops-301858971164.us-central1.run.app/leakage`  
+(After each Cloud Run redeploy that includes this page.)
 
 Thanks,  
 {You}
@@ -64,14 +67,21 @@ Markdown report:
 
 ## 5. Ops (internal)
 
+**Customer path:** browser → `GET /leakage` (not the raw API).
+
 ```bash
+# Local smoke
+uvicorn finance_ops.serving:app --port 8080
+# open http://127.0.0.1:8080/leakage
+
+# CLI / agent fallback
 PYTHONPATH=. python scripts/free_leakage_report.py \
   --closed-won closed_won.csv \
   --invoices invoices.csv \
   --company "Their Co" \
   --out /tmp/leakage.md
 
-# Cloud Run (after deploy)
+# API still used by the page (and by us) — do not put in prospect email
 curl -s -X POST https://finance-ops-301858971164.us-central1.run.app/v1/ar/free_leakage \
   -F "closed_won_csv=@closed_won.csv" \
   -F "invoices_csv=@invoices.csv" \

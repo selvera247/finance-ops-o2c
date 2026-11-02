@@ -19,7 +19,13 @@ PYTHONPATH=. python scripts/free_visibility_report.py \
 
 ## Free: sold-vs-invoiced leakage (CFO wedge)
 
+**Self-serve:** open `/leakage` on the running API (Cloud Run or local uvicorn) — upload two CSVs, no account.
+
 ```bash
+# Local
+uvicorn finance_ops.serving:app --port 8080
+# → http://127.0.0.1:8080/leakage
+
 PYTHONPATH=. python scripts/free_leakage_report.py \
   --closed-won data/ar_feed/crm_closed_won.csv \
   --invoices data/ar_feed/erp_open_ar.csv \
