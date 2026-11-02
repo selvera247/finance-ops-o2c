@@ -19,7 +19,10 @@ curl -s -X POST "$BASE/v1/suggest_payment_match" \
   -d '{"payment_id":"PAY-1001"}'
 ```
 
-Also free: `POST /v1/aging`, `GET /docs`, **`POST /v1/ar/free_visibility`** (multipart: payments + invoices CSVs → report). Prefer that over sharing `/docs` with customers — see [free-csv-drop.md](free-csv-drop.md).
+Also free:
+- `POST /v1/aging`, `GET /docs`
+- **`POST /v1/ar/free_visibility`** — cash-app suggestions ([free-csv-drop.md](free-csv-drop.md))
+- **`POST /v1/ar/free_leakage`** — sold vs invoiced gaps ([free-leakage-share-pack.md](free-leakage-share-pack.md))
 
 ## Paid / ops (token required)
 

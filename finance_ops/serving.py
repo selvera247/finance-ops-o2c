@@ -62,7 +62,8 @@ def write_auth_status() -> dict[str, Any]:
         "token_configured": bool(_write_token_expected()),
         "free_tier": "visibility",
         "hint": (
-            "Free: GET /v1/ar/*, suggest/aging, POST /v1/ar/free_visibility (two CSVs). "
+            "Free: GET /v1/ar/*, suggest/aging, "
+            "POST /v1/ar/free_visibility (cash) or /v1/ar/free_leakage (sold vs invoiced). "
             "Mutating routes need Authorization: Bearer <FINANCE_OPS_API_TOKEN>"
             if locked
             else "local/dev: writes open (set FINANCE_OPS_API_TOKEN or LOCK_WRITES=1)"
@@ -286,6 +287,33 @@ async def api_ar_free_visibility(
     report = run_free_csv_drop(
         payments_csv=payments_bytes,
         invoices_csv=invoices_bytes,
+        company_name=company_name.strip() or None,
+        top_n=top_n,
+    )
+    if report.get("status") != "success":
+        raise HTTPException(status_code=400, detail=report)
+    return report
+
+
+@app.post("/v1/ar/free_leakage")
+async def api_ar_free_leakage(
+    closed_won_csv: UploadFile = File(
+        ..., description="CRM closed-won / sold-by-customer CSV"
+    ),
+    invoices_csv: UploadFile = File(..., description="Invoices / AR CSV"),
+    company_name: str = Form(default=""),
+    top_n: int = Form(default=25),
+) -> dict[str, Any]:
+    """Free wedge — sold vs invoiced leakage by customer. No apply / no auth."""
+    from finance_ops.runtime.free_leakage_drop import run_free_leakage_drop
+
+    won_bytes = await closed_won_csv.read()
+    inv_bytes = await invoices_csv.read()
+    if not won_bytes or not inv_bytes:
+        raise HTTPException(status_code=400, detail="both CSV uploads are required")
+    report = run_free_leakage_drop(
+        closed_won_csv=won_bytes,
+        invoices_csv=inv_bytes,
         company_name=company_name.strip() or None,
         top_n=top_n,
     )

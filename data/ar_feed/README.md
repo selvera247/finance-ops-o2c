@@ -1,26 +1,34 @@
-# AR feed samples + free CSV drop
+# AR feed samples + free CSV drops
 
 | File | Role |
 | --- | --- |
-| `erp_unmatched_payments.csv` | Unmatched cash sample |
+| `erp_unmatched_payments.csv` | Unmatched cash (cash-app free wedge) |
 | `erp_open_ar.csv` | Open AR / invoices sample |
-| `hubspot_gaps.json` | Offline HubSpot sold amounts |
+| `crm_closed_won.csv` | CRM closed-won sold amounts (leakage free wedge) |
+| `hubspot_gaps.json` | Offline HubSpot sold fixture for durable triage |
+| `templates/` | Blank-ish CSV templates for outreach |
 
-## Free visibility (two CSVs → report)
+## Free: cash-app visibility
 
 ```bash
 PYTHONPATH=. python scripts/free_visibility_report.py \
   --payments data/ar_feed/erp_unmatched_payments.csv \
   --invoices data/ar_feed/erp_open_ar.csv \
-  --company "Demo" \
-  --out /tmp/free_visibility.md
+  --company "Demo" --out /tmp/free_visibility.md
 ```
 
-Docs: [docs/free-csv-drop.md](../../docs/free-csv-drop.md)
+## Free: sold-vs-invoiced leakage (CFO wedge)
+
+```bash
+PYTHONPATH=. python scripts/free_leakage_report.py \
+  --closed-won data/ar_feed/crm_closed_won.csv \
+  --invoices data/ar_feed/erp_open_ar.csv \
+  --company "Demo" --out /tmp/free_leakage.md
+```
+
+Share pack: [docs/free-leakage-share-pack.md](../../docs/free-leakage-share-pack.md)
 
 ## Durable triage (warehouse)
-
-Drop payments into `data/incoming/ar_exceptions/` or:
 
 ```bash
 PYTHONPATH=. python scripts/run_ar_feed_triage.py

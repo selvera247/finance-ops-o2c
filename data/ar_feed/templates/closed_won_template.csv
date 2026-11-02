@@ -1,0 +1,2 @@
+deal_id,customer_id,company_name,sold,close_date
+DEAL-001,CUST-001,Example Customer,25000.00,2026-09-01

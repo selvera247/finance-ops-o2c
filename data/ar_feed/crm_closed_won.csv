@@ -1,0 +1,4 @@
+deal_id,customer_id,company_name,sold,close_date
+DEAL-1042,C-1042,Acme North,55000.00,2026-08-01
+DEAL-2099,C-2099,Beacon Labs,3200.00,2026-09-15
+DEAL-3001,C-3001,Cascade Bio,12000.00,2026-10-01

@@ -1,0 +1,2 @@
+invoice_id,customer_id,customer_name,amount,status,due_date
+INV-001,CUST-001,Example Customer,10000.00,open,2026-11-15

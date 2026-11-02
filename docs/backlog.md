@@ -53,7 +53,8 @@ Canonical brief: **[ar-exception-queue.md](ar-exception-queue.md)**
 | Clean architecture | **Done** | `finance_ops/ar_queue` domain/app/ports/adapters — [clean-architecture-ar-queue.md](clean-architecture-ar-queue.md) |
 | Free Cloud Run wedge | **Done** | Public GETs/suggest; writes locked (`FINANCE_OPS_API_TOKEN`) |
 | Free two-CSV drop | **Done** | Unmatched + open AR → report — [free-csv-drop.md](free-csv-drop.md) |
+| Free leakage wedge | **Done** | Sold vs invoiced gap $ — [free-leakage-share-pack.md](free-leakage-share-pack.md) |
 | Pilot | Pending | One AR team / carrier-payer; no per-seat dashboard lead |
-| Studio expansion | Later | Portal remittance / leakage / collections **after** queue conversion |
+| Studio expansion | Later | Portal remittance / collections after primary wedge converts |
 
 **Agent write path:** `request_cash_app_approval` (not direct `apply_payment_match`). MCP stays read-only.
