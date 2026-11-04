@@ -2,6 +2,9 @@
 
 Exception projection stays in ar_exceptions; this store holds Copilot-specific
 state so we do not break existing queue schema.
+
+Discovery-minimum audit fields live on investigate/decision events and on the
+overlay document (raw + edited hypothesis, citations, actor, timestamps).
 """
 
 from __future__ import annotations
@@ -41,11 +44,16 @@ def load_overlay(case_id: str) -> dict[str, Any]:
         return {
             "case_id": case_id,
             "hypothesis": None,
+            "raw_hypothesis": None,
             "summary": None,
             "guidance": None,
             "audit": [],
             "last_decision": None,
             "reason_code": None,
+            "decision_actor": None,
+            "decision_at": None,
+            "confidence_band": None,
+            "citation_map": None,
         }
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -78,9 +86,20 @@ def append_audit(
     return entry
 
 
-def set_hypothesis(case_id: str, hypothesis: MatchHypothesis) -> None:
+def set_hypothesis(
+    case_id: str,
+    hypothesis: MatchHypothesis,
+    *,
+    raw: bool = False,
+) -> None:
+    """Persist hypothesis. When raw=True, also snapshot as raw_hypothesis."""
     overlay = load_overlay(case_id)
-    overlay["hypothesis"] = hypothesis.model_dump()
+    dumped = hypothesis.model_dump()
+    overlay["hypothesis"] = dumped
+    overlay["confidence_band"] = hypothesis.confidence_band
+    overlay["citation_map"] = [c.model_dump() for c in hypothesis.citation_map]
+    if raw or overlay.get("raw_hypothesis") is None:
+        overlay["raw_hypothesis"] = dumped
     save_overlay(case_id, overlay)
 
 
@@ -101,8 +120,23 @@ def set_decision(
     *,
     decision: str,
     reason_code: str | None,
+    actor: str | None = None,
+    confidence_band: str | None = None,
+    citation_map: list[dict[str, Any]] | None = None,
+    raw_hypothesis: dict[str, Any] | None = None,
+    edited_hypothesis: dict[str, Any] | None = None,
 ) -> None:
     overlay = load_overlay(case_id)
     overlay["last_decision"] = decision
     overlay["reason_code"] = reason_code
+    overlay["decision_actor"] = actor
+    overlay["decision_at"] = _now()
+    if confidence_band is not None:
+        overlay["confidence_band"] = confidence_band
+    if citation_map is not None:
+        overlay["citation_map"] = citation_map
+    if raw_hypothesis is not None:
+        overlay["raw_hypothesis"] = raw_hypothesis
+    if edited_hypothesis is not None:
+        overlay["hypothesis"] = edited_hypothesis
     save_overlay(case_id, overlay)

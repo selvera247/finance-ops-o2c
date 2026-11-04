@@ -95,6 +95,7 @@ def test_rules_only_skips_llm_path(
 ) -> None:
     monkeypatch.setenv("COPILOT_MODE", "rules_only")
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert copilot_mode() == "rules_only"
     case_id = spike_ready
     inv = copilot.investigate(case_id, actor="test")
@@ -102,7 +103,19 @@ def test_rules_only_skips_llm_path(
     assert inv["rules_only"] is True
     assert inv["summary"]["rules_only"] is True
     assert inv["llm_skipped"] is True
-    assert "Rules-only" in inv["summary"]["summary"] or inv["hypothesis"]["model_id"] == "rules_only"
+    assert (
+        "Rules-only" in inv["summary"]["summary"]
+        or inv["hypothesis"]["model_id"] == "rules_only"
+    )
+
+
+def test_hypothesis_citations_map_to_evidence(spike_ready: str) -> None:
+    case_id = spike_ready
+    inv = copilot.investigate(case_id, actor="test")
+    assert inv["status"] == "success"
+    evidence_ids = {i["source_id"] for i in inv["evidence"]["items"]}
+    for cite in inv["hypothesis"]["citation_map"]:
+        assert cite["source_id"] in evidence_ids
 
 
 def test_reject_requires_reason(spike_ready: str) -> None:
