@@ -1,12 +1,21 @@
-"""Demo warehouse seed for Copilot (Spike A cash-app fixtures).
+"""Demo warehouse seed for Copilot Sync / Refresh.
 
 Cloud Run containers start with an empty ephemeral DuckDB. Calling
 ``sync_from_warehouse`` first runs ``ensure_schema()``, which creates that
 empty file and disables the fixtures fallback — Sync then reports success
 with ``payment_count=0`` and the cash_app workbench queue stays empty.
 
-This module loads ``data/spike_a/*.csv`` into DuckDB so Sync/Refresh can
-materialize EXE-cash_app-* cases without a manual bootstrap step.
+## Demo packs (``COPILOT_DEMO_SEED_PACK``)
+
+| Pack | Source | Marker payments | Notes |
+| --- | --- | --- | --- |
+| ``base`` | ``data/*.json`` via ``ingest_batch`` (same as ``POST /v1/bootstrap``) | ``PAY-9002``, ``PAY-9003`` | Core demo warehouse (CUST-ACME / NORTH / GLOBEX) |
+| ``spike_a`` | ``data/spike_a/*.csv`` | ``PAY-1001``, ``PAY-2001``, ``PAY-3001`` | Cash-app walkthrough + eval gold |
+| ``base+spike_a`` (default) | both, base first then Spike A merge | all of the above | Matches prior workbench screenshots (900x + 100x/200x/400x) |
+
+Spike B (``data/spike_b``) is **portal remittance** (``CLM-B*``, lane ``portal_remittance``) — not the cash_app queue.
+
+Set ``COPILOT_AUTO_SEED=0`` to disable Sync-time seeding entirely.
 """
 
 from __future__ import annotations
@@ -14,13 +23,17 @@ from __future__ import annotations
 import csv
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from data_plane import config as data_config
 
 SPIKE_DIR = data_config.DATA_DIR / "spike_a"
 SPIKE_A_WALKTHROUGH = ("PAY-1001", "PAY-2001", "PAY-3001")
+BASE_DEMO_MARKERS = ("PAY-9002", "PAY-9003")
+SPIKE_A_MARKERS = ("PAY-1001", "PAY-2001")
+
+# Default pack restores the richer combined workbench dataset.
+DEFAULT_DEMO_SEED_PACK = "base+spike_a"
 
 
 def _truthy(name: str) -> bool:
@@ -32,12 +45,24 @@ def _falsy(name: str) -> bool:
 
 
 def auto_seed_enabled() -> bool:
-    """Spike A auto-seed on Sync. Default on; set COPILOT_AUTO_SEED=0 to disable."""
+    """Auto-seed on Sync. Default on; set COPILOT_AUTO_SEED=0 to disable."""
     if _falsy("COPILOT_AUTO_SEED"):
         return False
     if _truthy("COPILOT_AUTO_SEED"):
         return True
     return True
+
+
+def demo_seed_pack() -> str:
+    """Which fixture pack(s) Sync should materialize when the warehouse is incomplete."""
+    raw = os.getenv("COPILOT_DEMO_SEED_PACK", DEFAULT_DEMO_SEED_PACK).strip().lower()
+    if raw in {"base", "bootstrap", "warehouse"}:
+        return "base"
+    if raw in {"spike_a", "spike-a", "spikea"}:
+        return "spike_a"
+    if raw in {"base+spike_a", "base+spike-a", "full", "demo", ""}:
+        return "base+spike_a"
+    return DEFAULT_DEMO_SEED_PACK
 
 
 def _now() -> datetime:
@@ -65,6 +90,23 @@ def warehouse_unmatched_payment_count() -> int:
         "SELECT COUNT(*) AS n FROM payments WHERE status IN ('unmatched', 'partial')"
     )
     return int((rows[0] or {}).get("n") or 0) if rows else 0
+
+
+def warehouse_has_payment(payment_id: str) -> bool:
+    if not data_config.DUCKDB_PATH.exists():
+        return False
+    from data_plane.warehouse import db
+
+    db.init_schema()
+    rows = db.query_dicts(
+        "SELECT 1 AS ok FROM payments WHERE UPPER(payment_id) = ? LIMIT 1",
+        [payment_id.strip().upper()],
+    )
+    return bool(rows)
+
+
+def _missing_markers(markers: tuple[str, ...]) -> list[str]:
+    return [pid for pid in markers if not warehouse_has_payment(pid)]
 
 
 def load_spike_a(*, replace_customers: bool = False) -> dict[str, Any]:
@@ -163,31 +205,91 @@ def load_spike_a(*, replace_customers: bool = False) -> dict[str, Any]:
         con.close()
 
 
-def ensure_spike_a_payments(*, force: bool = False) -> dict[str, Any]:
-    """Seed Spike A when the warehouse has no unmatched payments.
+def load_base_warehouse(*, run_id: str = "copilot-demo-seed") -> dict[str, Any]:
+    """Load committed ``data/*.json`` demo warehouse (PAY-900x / CUST-*)."""
+    from pipelines.batch.ingest import ingest_batch
 
-    ``force`` re-loads even when payments already exist. ``COPILOT_AUTO_SEED=0``
-    always disables seeding (force cannot override the kill switch).
+    return ingest_batch(run_id=run_id)
 
-    Returns a status dict: skipped | success | error | disabled.
+
+def ensure_demo_payments(*, force: bool = False) -> dict[str, Any]:
+    """Seed the configured demo pack when the warehouse is empty or incomplete.
+
+    Does **not** silently replace a complete warehouse with Spike A alone.
+    If base markers are missing (e.g. prior Spike-A-only seed), reloads
+    ``base`` then merges Spike A so PAY-9002/9003 return alongside Spike A.
+
+    ``COPILOT_AUTO_SEED=0`` always disables seeding.
     """
     if not auto_seed_enabled():
         return {"status": "disabled", "reason": "COPILOT_AUTO_SEED=0"}
 
-    if not force:
-        existing = warehouse_unmatched_payment_count()
-        if existing > 0:
-            return {
-                "status": "skipped",
-                "reason": "payments_present",
-                "payment_count": existing,
-            }
+    pack = demo_seed_pack()
+    want_base = pack in {"base", "base+spike_a"}
+    want_spike = pack in {"spike_a", "base+spike_a"}
 
-    loaded = load_spike_a(replace_customers=False)
-    if loaded.get("status") != "success":
-        return loaded
+    missing_base = _missing_markers(BASE_DEMO_MARKERS) if want_base else []
+    missing_spike = _missing_markers(SPIKE_A_MARKERS) if want_spike else []
+
+    if not force and not missing_base and not missing_spike:
+        return {
+            "status": "skipped",
+            "reason": "demo_pack_present",
+            "pack": pack,
+            "payment_count": warehouse_unmatched_payment_count(),
+        }
+
+    steps: list[dict[str, Any]] = []
+    seeded = False
+
+    # ingest_batch wipes payments/invoices — if base is missing/forced, reload
+    # Spike A afterward whenever the pack includes it.
+    if want_base and (force or missing_base):
+        base = load_base_warehouse()
+        steps.append({"step": "base", **base})
+        if base.get("status") != "success":
+            return {
+                "status": "error",
+                "error": "base_seed_failed",
+                "pack": pack,
+                "steps": steps,
+            }
+        seeded = True
+        if want_spike:
+            spike = load_spike_a(replace_customers=False)
+            steps.append({"step": "spike_a", **spike})
+            if spike.get("status") != "success":
+                return {
+                    "status": "error",
+                    "error": "spike_a_seed_failed",
+                    "pack": pack,
+                    "steps": steps,
+                }
+    elif want_spike and (force or missing_spike):
+        spike = load_spike_a(replace_customers=False)
+        steps.append({"step": "spike_a", **spike})
+        if spike.get("status") != "success":
+            return {
+                "status": "error",
+                "error": "spike_a_seed_failed",
+                "pack": pack,
+                "steps": steps,
+            }
+        seeded = True
+
     return {
-        **loaded,
-        "seeded": True,
+        "status": "success",
+        "seeded": seeded or force or bool(steps),
+        "pack": pack,
+        "steps": steps,
         "payment_count": warehouse_unmatched_payment_count(),
+        "markers": {
+            "base": list(BASE_DEMO_MARKERS),
+            "spike_a": list(SPIKE_A_MARKERS),
+        },
     }
+
+
+# Back-compat alias used by earlier Sync fix / callers.
+def ensure_spike_a_payments(*, force: bool = False) -> dict[str, Any]:
+    return ensure_demo_payments(force=force)
