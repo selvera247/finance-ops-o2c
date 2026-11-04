@@ -1,0 +1,212 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body.copilot-app {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--copilot-ink);
+  font-family: var(--copilot-font);
+  font-size: var(--copilot-fs-md);
+  line-height: var(--copilot-lh);
+  background:
+    radial-gradient(920px 480px at 8% -12%, rgba(47, 158, 138, 0.18), transparent 55%),
+    radial-gradient(720px 420px at 100% 0%, rgba(94, 184, 255, 0.1), transparent 50%),
+    var(--copilot-bg);
+}
+
+.copilot-app a {
+  color: var(--copilot-accent);
+}
+
+.copilot-app :focus-visible {
+  outline: 2px solid var(--copilot-focus);
+  outline-offset: 2px;
+}
+
+.copilot-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 1000;
+  padding: var(--copilot-space-2) var(--copilot-space-3);
+  background: var(--copilot-accent);
+  color: #04110e;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--copilot-radius-sm);
+}
+
+.copilot-skip-link:focus {
+  left: var(--copilot-space-3);
+  top: var(--copilot-space-3);
+}
+
+.copilot-shell-header {
+  min-height: var(--copilot-header-h);
+  padding: var(--copilot-space-3) var(--copilot-space-5);
+  border-bottom: 1px solid var(--copilot-line);
+  display: flex;
+  gap: var(--copilot-space-4);
+  align-items: baseline;
+  flex-wrap: wrap;
+  background: rgba(14, 20, 27, 0.72);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.copilot-shell-header h1 {
+  margin: 0;
+  font-size: var(--copilot-fs-lg);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.copilot-shell-header .meta {
+  color: var(--copilot-ink-muted);
+  font-size: var(--copilot-fs-sm);
+}
+
+.copilot-shell-header nav {
+  margin-left: auto;
+  display: flex;
+  gap: var(--copilot-space-3);
+  font-size: var(--copilot-fs-sm);
+}
+
+.copilot-shell-header nav a {
+  color: var(--copilot-ink-muted);
+  text-decoration: none;
+}
+
+.copilot-shell-header nav a:hover,
+.copilot-shell-header nav a[aria-current="page"] {
+  color: var(--copilot-ink);
+}
+
+.copilot-layout {
+  display: grid;
+  grid-template-columns: var(--copilot-queue-width) 1fr;
+  min-height: calc(100vh - var(--copilot-header-h));
+}
+
+@media (max-width: 900px) {
+  .copilot-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.copilot-queue-col {
+  border-right: 1px solid var(--copilot-line);
+  background: rgba(26, 36, 48, 0.55);
+  padding: var(--copilot-space-4);
+  max-height: calc(100vh - var(--copilot-header-h));
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .copilot-queue-col {
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--copilot-line);
+  }
+}
+
+.copilot-detail-col {
+  padding: var(--copilot-space-4) var(--copilot-space-5);
+  max-height: calc(100vh - var(--copilot-header-h));
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .copilot-detail-col {
+    max-height: none;
+  }
+}
+
+.copilot-panel {
+  background: var(--copilot-panel);
+  border: 1px solid var(--copilot-line);
+  border-radius: var(--copilot-radius-lg);
+  padding: var(--copilot-space-4);
+  margin-bottom: var(--copilot-space-4);
+}
+
+.copilot-panel > h2 {
+  margin: 0 0 var(--copilot-space-3);
+  font-size: var(--copilot-fs-md);
+  font-weight: 600;
+}
+
+.copilot-muted {
+  color: var(--copilot-ink-muted);
+  font-size: var(--copilot-fs-sm);
+}
+
+.copilot-mono {
+  font-family: var(--copilot-mono);
+}
+
+.copilot-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.copilot-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.copilot-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--copilot-space-3);
+}
+
+.copilot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--copilot-space-2);
+  align-items: center;
+}
+
+.copilot-examples-page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--copilot-space-5);
+}
+
+.copilot-examples-page > section {
+  margin-bottom: var(--copilot-space-6);
+}
+
+.copilot-examples-page h2 {
+  margin: 0 0 var(--copilot-space-2);
+  font-size: var(--copilot-fs-lg);
+}
+
+.copilot-examples-grid {
+  display: grid;
+  gap: var(--copilot-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}

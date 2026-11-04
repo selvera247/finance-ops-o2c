@@ -44,12 +44,21 @@ class FixtureMailboxAdapter(MailboxAdapter):
     def __init__(self, path: Path | None = None) -> None:
         override = (os.getenv("COPILOT_MAILBOX_FIXTURE") or "").strip()
         self.path = Path(override) if override else (path or _DEFAULT_FIXTURE)
+        self._cached_mtime: float | None = None
+        self._cached_msgs: list[EmailMessage] | None = None
 
     def _load(self) -> list[EmailMessage]:
         if not self.path.is_file():
+            self._cached_mtime = None
+            self._cached_msgs = []
             return []
+        mtime = self.path.stat().st_mtime
+        if self._cached_msgs is not None and self._cached_mtime == mtime:
+            return self._cached_msgs
         raw = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(raw, list):
+            self._cached_mtime = mtime
+            self._cached_msgs = []
             return []
         out: list[EmailMessage] = []
         for row in raw:
@@ -72,7 +81,10 @@ class FixtureMailboxAdapter(MailboxAdapter):
                     source="fixture",
                 )
             )
-        return [m for m in out if m.message_id and m.customer_id]
+        msgs = [m for m in out if m.message_id and m.customer_id]
+        self._cached_mtime = mtime
+        self._cached_msgs = msgs
+        return msgs
 
     def search(
         self,
@@ -83,8 +95,9 @@ class FixtureMailboxAdapter(MailboxAdapter):
     ) -> list[EmailMessage]:
         want = customer_id.strip().upper()
         pay = (payment_id or "").strip().upper() or None
+        messages = self._load()
         hits: list[EmailMessage] = []
-        for msg in self._load():
+        for msg in messages:
             if msg.customer_id.strip().upper() != want:
                 continue
             if pay:
@@ -97,11 +110,7 @@ class FixtureMailboxAdapter(MailboxAdapter):
             hits.append(msg)
         if pay and not hits:
             # Fallback: same-customer messages (still ACL-filtered by caller).
-            hits = [
-                m
-                for m in self._load()
-                if m.customer_id.strip().upper() == want
-            ]
+            hits = [m for m in messages if m.customer_id.strip().upper() == want]
         return hits[: max(1, limit)]
 
 

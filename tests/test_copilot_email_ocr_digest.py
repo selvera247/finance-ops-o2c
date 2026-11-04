@@ -40,7 +40,7 @@ def spike_ready(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     monkeypatch.setattr("finance_ops.copilot.digest.REPO_ROOT", tmp_path)
     ingest_batch(run_id="copilot-email-ocr-batch")
     load_spike_a(replace_customers=True)
-    sync = copilot.ensure_queue(sync=True)
+    sync = copilot.ensure_queue(sync=True, force=True)
     assert sync.get("synced_count", 0) >= 1
     return copilot.case_id_for_payment("PAY-1001")
 

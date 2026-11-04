@@ -75,11 +75,13 @@ def build_digest_payload(
             },
         }
 
+    # detail=full only for digest (needs lines/summary); workbench uses summary.
     queue = copilot_service.list_queue(
         status="open",
         lane="cash_app",
         limit=max(max_items * 5, 50),
         sync_first=sync_first,
+        detail="full",
     )
     cases = list(queue.get("cases") or [])
     items: list[dict[str, Any]] = []
@@ -88,7 +90,11 @@ def build_digest_payload(
     for case in cases:
         hyp = case.get("hypothesis") or {}
         band = hyp.get("confidence_band") or case.get("confidence_band")
-        insuff = bool(hyp.get("insufficient_data"))
+        insuff = bool(
+            hyp.get("insufficient_data")
+            if isinstance(hyp, dict)
+            else case.get("insufficient_data")
+        )
         reasons: list[str] = []
         if drop_insuff and (insuff or band == "insufficient"):
             reasons.append("insufficient_data")
@@ -117,7 +123,7 @@ def build_digest_payload(
                 "confidence_band": band,
                 "match_score": case.get("match_score"),
                 "recommended_invoice_id": case.get("recommended_invoice_id"),
-                "lines": hyp.get("lines") or [],
+                "lines": hyp.get("lines") or [] if isinstance(hyp, dict) else [],
                 "summary": (case.get("summary") or {}).get("summary"),
             }
         )

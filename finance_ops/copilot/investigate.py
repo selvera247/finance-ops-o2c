@@ -530,10 +530,6 @@ def investigate_case(
         rules_only=rules_only,
     )
 
-    # Persist raw hypothesis separately so later edits do not erase the draft.
-    case_store.set_hypothesis(case_id, hypothesis, raw=True)
-    case_store.set_summary(case_id, summary)
-
     remittance_ids = [
         i.source_id for i in evidence.items if i.source_type == "remittance"
     ]
@@ -542,11 +538,13 @@ def investigate_case(
         i.source_id for i in evidence.items if i.source_type == "invoice"
     ]
 
-    case_store.append_audit(
+    # Single overlay write (hypothesis + summary + audit) instead of 3 RMW cycles.
+    case_store.persist_investigation(
         case_id,
-        "investigate",
+        hypothesis=hypothesis,
+        summary=summary,
         actor=actor,
-        detail={
+        audit_detail={
             "case_id": case_id,
             "customer_id": customer_id,
             "payment_id": payment_id,
@@ -575,6 +573,13 @@ def investigate_case(
         or hypothesis.model_id in {MODEL_STUB, MODEL_RULES}
     )
 
+    candidates = list(scored.get("candidates") or [])[:5]
+    evidence_dump = evidence.model_dump()
+    # Seed process cache so the next GET /evidence after investigate is free.
+    from finance_ops.copilot.evidence_cache import cache_evidence_pack
+
+    cache_evidence_pack(case_id, actor=actor, pack=evidence_dump)
+
     return {
         "status": "success",
         "case_id": case_id,
@@ -582,9 +587,9 @@ def investigate_case(
         "rules_only": rules_only,
         "scored": {
             "recommendation": scored.get("recommendation"),
-            "candidates": scored.get("candidates") or [],
+            "candidates": candidates,
         },
-        "evidence": evidence.model_dump(),
+        "evidence": evidence_dump,
         "hypothesis": hypothesis.model_dump(),
         "summary": summary.model_dump(),
         "needs_review": True,

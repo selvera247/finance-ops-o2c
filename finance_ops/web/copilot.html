@@ -101,6 +101,9 @@
   <script>
     let selected = null;
     let evidenceById = {};
+    let caseAbort = null;
+    let queueAbort = null;
+    let syncTimer = 0;
     const $ = (id) => document.getElementById(id);
 
     const REASON_CODES = {
@@ -129,6 +132,11 @@
         headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
         ...opts,
       });
+      if (opts.signal?.aborted) {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        throw err;
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const err = data.detail?.error || data.detail || data.error || res.statusText;
@@ -188,32 +196,73 @@
     }
 
     async function loadQueue(sync = false) {
-      const q = await api(`/v1/copilot/queue?sync=${sync ? "true" : "false"}&lane=cash_app`);
+      queueAbort?.abort();
+      queueAbort = new AbortController();
+      const { signal } = queueAbort;
+      const q = await api(
+        `/v1/copilot/queue?sync=${sync ? "true" : "false"}&lane=cash_app&detail=summary`,
+        { signal },
+      );
+      if (signal.aborted) return;
       const root = $("queue");
       root.innerHTML = "";
       if (!q.cases?.length) {
         root.innerHTML = `<p class="muted">No cases. Click Sync (loads Spike A / warehouse).</p>`;
         return;
       }
-      for (const c of q.cases) {
-        const el = document.createElement("div");
-        el.className = "row" + (selected === c.case_id ? " active" : "");
-        el.innerHTML = `<div class="id">${esc(c.case_id)}</div>
-          <div class="amt">${esc(c.currency || "USD")} ${esc(c.amount ?? "—")} · ${esc(c.status)}</div>
-          <div class="muted">${esc(c.payment_id || "")} · aging ${esc(c.aging_days ?? "?")}d · score ${esc(c.match_score ?? "—")}</div>`;
-        el.onclick = () => openCase(c.case_id);
-        root.appendChild(el);
-      }
+      const page = 50;
+      let visible = Math.min(page, q.cases.length);
+      const paint = () => {
+        root.innerHTML = "";
+        for (const c of q.cases.slice(0, visible)) {
+          const el = document.createElement("div");
+          el.className = "row" + (selected === c.case_id ? " active" : "");
+          el.innerHTML = `<div class="id">${esc(c.case_id)}</div>
+            <div class="amt">${esc(c.currency || "USD")} ${esc(c.amount ?? "—")} · ${esc(c.status)}</div>
+            <div class="muted">${esc(c.payment_id || "")} · aging ${esc(c.aging_days ?? "?")}d · score ${esc(c.match_score ?? "—")}</div>`;
+          el.onclick = () => openCase(c.case_id);
+          root.appendChild(el);
+        }
+        if (visible < q.cases.length) {
+          const more = document.createElement("button");
+          more.type = "button";
+          more.className = "secondary";
+          more.textContent = `Show more (${q.cases.length - visible} remaining)`;
+          more.onclick = () => {
+            visible = Math.min(visible + page, q.cases.length);
+            paint();
+          };
+          root.appendChild(more);
+        }
+      };
+      paint();
+    }
+
+    function highlightQueueSelection() {
+      document.querySelectorAll("#queue .row").forEach((el) => {
+        const id = el.querySelector(".id")?.textContent;
+        el.classList.toggle("active", id === selected);
+      });
     }
 
     async function openCase(caseId) {
+      caseAbort?.abort();
+      caseAbort = new AbortController();
+      const { signal } = caseAbort;
       selected = caseId;
-      await loadQueue(false);
-      const [c, e, a] = await Promise.all([
-        api(`/v1/copilot/cases/${caseId}`),
-        api(`/v1/copilot/cases/${caseId}/evidence`),
-        api(`/v1/copilot/cases/${caseId}/audit`),
-      ]);
+      highlightQueueSelection();
+      let c, e, a;
+      try {
+        [c, e, a] = await Promise.all([
+          api(`/v1/copilot/cases/${caseId}`, { signal }),
+          api(`/v1/copilot/cases/${caseId}/evidence`, { signal }),
+          api(`/v1/copilot/cases/${caseId}/audit`, { signal }),
+        ]);
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        throw err;
+      }
+      if (signal.aborted || selected !== caseId) return;
       const caseObj = c.case;
       const hyp = caseObj.hypothesis || {};
       const insufficient = !!hyp.insufficient_data || hyp.confidence_band === "insufficient";
@@ -287,8 +336,26 @@
 
       $("btnInv").onclick = async () => {
         const out = await api(`/v1/copilot/cases/${caseId}/investigate`, { method: "POST", body: "{}" });
-        $("hypPre").textContent = JSON.stringify(out.hypothesis, null, 2);
-        await openCase(caseId);
+        if (out.hypothesis) {
+          $("hypPre").textContent = JSON.stringify(out.hypothesis, null, 2);
+        }
+        // Reuse investigate evidence — avoid full openCase rebuild.
+        if (out.evidence?.items) {
+          $("evidenceList").innerHTML = renderEvidence(out.evidence.items);
+        }
+        const a = await api(`/v1/copilot/cases/${caseId}/audit`);
+        // Keep detail shell; only refresh audit blob if present.
+        const auditPre = $("detail").querySelector("pre:last-of-type");
+        if (auditPre && a.audit) {
+          auditPre.textContent = JSON.stringify({
+            last_decision: a.last_decision,
+            reason_code: a.reason_code,
+            raw_hypothesis: a.raw_hypothesis,
+            hypothesis: a.hypothesis,
+            citation_map: a.citation_map,
+            audit: a.audit,
+          }, null, 2);
+        }
       };
 
       const decide = async (decision, reason_code = null) => {
@@ -305,6 +372,7 @@
           await openCase(caseId);
           await loadQueue(false);
         } catch (err) {
+          if (err?.name === "AbortError") return;
           alert(String(err.message || err));
         }
       };
@@ -316,7 +384,10 @@
       $("btnNeed").onclick = () => decide("need_info", $("reason-need_info").value);
     }
 
-    $("btnSync").onclick = async () => { await loadQueue(true); };
+    $("btnSync").onclick = () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => { loadQueue(true); }, 400);
+    };
     refreshStatus().then(() => loadQueue(true)).catch((err) => {
       $("queue").textContent = String(err);
     });

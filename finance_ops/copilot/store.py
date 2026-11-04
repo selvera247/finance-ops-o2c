@@ -10,9 +10,10 @@ overlay document (raw + edited hypothesis, citations, actor, timestamps).
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from finance_ops.copilot.types import (
     ApplyGuidancePacket,
@@ -21,6 +22,9 @@ from finance_ops.copilot.types import (
     MatchHypothesis,
 )
 from finance_ops.lib.paths import REPO_ROOT
+
+# Cap retained audit events per case (oldest dropped). Override via env.
+_MAX_AUDIT = max(20, int(os.getenv("COPILOT_MAX_AUDIT_EVENTS", "100") or "100"))
 
 
 def _root() -> Path:
@@ -38,31 +42,60 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _empty_overlay(case_id: str) -> dict[str, Any]:
+    return {
+        "case_id": case_id,
+        "hypothesis": None,
+        "raw_hypothesis": None,
+        "summary": None,
+        "guidance": None,
+        "audit": [],
+        "last_decision": None,
+        "reason_code": None,
+        "decision_actor": None,
+        "decision_at": None,
+        "confidence_band": None,
+        "citation_map": None,
+    }
+
+
 def load_overlay(case_id: str) -> dict[str, Any]:
     path = case_path(case_id)
     if not path.is_file():
-        return {
-            "case_id": case_id,
-            "hypothesis": None,
-            "raw_hypothesis": None,
-            "summary": None,
-            "guidance": None,
-            "audit": [],
-            "last_decision": None,
-            "reason_code": None,
-            "decision_actor": None,
-            "decision_at": None,
-            "confidence_band": None,
-            "citation_map": None,
-        }
+        return _empty_overlay(case_id)
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_overlays(case_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Batch-load overlays for a queue page (one open per id; shared empty template)."""
+    out: dict[str, dict[str, Any]] = {}
+    for case_id in case_ids:
+        out[case_id] = load_overlay(case_id)
+    return out
 
 
 def save_overlay(case_id: str, data: dict[str, Any]) -> dict[str, Any]:
     path = case_path(case_id)
     data = {**data, "case_id": case_id, "updated_at": _now()}
-    path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    # Compact JSON — indent=2 doubled overlay size on every investigate write.
+    path.write_text(json.dumps(data, separators=(",", ":"), default=str), encoding="utf-8")
     return data
+
+
+def update_overlay(
+    case_id: str,
+    mutator: Callable[[dict[str, Any]], None],
+) -> dict[str, Any]:
+    """Single load → mutate → save cycle for multi-field updates."""
+    overlay = load_overlay(case_id)
+    mutator(overlay)
+    return save_overlay(case_id, overlay)
+
+
+def _trim_audit(audit: list[Any]) -> list[Any]:
+    if len(audit) <= _MAX_AUDIT:
+        return audit
+    return audit[-_MAX_AUDIT:]
 
 
 def append_audit(
@@ -72,17 +105,19 @@ def append_audit(
     actor: str | None = None,
     detail: dict[str, Any] | None = None,
 ) -> AuditEvent:
-    overlay = load_overlay(case_id)
     entry = AuditEvent(
         ts=_now(),
         event=event,
         actor=actor,
         detail=detail or {},
     )
-    audit = list(overlay.get("audit") or [])
-    audit.append(entry.model_dump())
-    overlay["audit"] = audit
-    save_overlay(case_id, overlay)
+
+    def _mutate(overlay: dict[str, Any]) -> None:
+        audit = list(overlay.get("audit") or [])
+        audit.append(entry.model_dump())
+        overlay["audit"] = _trim_audit(audit)
+
+    update_overlay(case_id, _mutate)
     return entry
 
 
@@ -93,26 +128,87 @@ def set_hypothesis(
     raw: bool = False,
 ) -> None:
     """Persist hypothesis. When raw=True, also snapshot as raw_hypothesis."""
-    overlay = load_overlay(case_id)
-    dumped = hypothesis.model_dump()
-    overlay["hypothesis"] = dumped
-    overlay["confidence_band"] = hypothesis.confidence_band
-    overlay["citation_map"] = [c.model_dump() for c in hypothesis.citation_map]
-    if raw or overlay.get("raw_hypothesis") is None:
-        overlay["raw_hypothesis"] = dumped
-    save_overlay(case_id, overlay)
+
+    def _mutate(overlay: dict[str, Any]) -> None:
+        dumped = hypothesis.model_dump()
+        overlay["hypothesis"] = dumped
+        overlay["confidence_band"] = hypothesis.confidence_band
+        overlay["citation_map"] = [c.model_dump() for c in hypothesis.citation_map]
+        if raw or overlay.get("raw_hypothesis") is None:
+            overlay["raw_hypothesis"] = dumped
+
+    update_overlay(case_id, _mutate)
 
 
 def set_summary(case_id: str, summary: InvestigationSummary) -> None:
-    overlay = load_overlay(case_id)
-    overlay["summary"] = summary.model_dump()
-    save_overlay(case_id, overlay)
+    def _mutate(overlay: dict[str, Any]) -> None:
+        overlay["summary"] = summary.model_dump()
+
+    update_overlay(case_id, _mutate)
 
 
 def set_guidance(case_id: str, guidance: ApplyGuidancePacket) -> None:
-    overlay = load_overlay(case_id)
-    overlay["guidance"] = guidance.model_dump()
-    save_overlay(case_id, overlay)
+    def _mutate(overlay: dict[str, Any]) -> None:
+        overlay["guidance"] = guidance.model_dump()
+
+    update_overlay(case_id, _mutate)
+
+
+def persist_investigation(
+    case_id: str,
+    *,
+    hypothesis: MatchHypothesis,
+    summary: InvestigationSummary,
+    actor: str | None,
+    audit_detail: dict[str, Any],
+) -> None:
+    """One overlay write for investigate: hypothesis + summary + audit event."""
+
+    def _mutate(overlay: dict[str, Any]) -> None:
+        dumped = hypothesis.model_dump()
+        overlay["hypothesis"] = dumped
+        overlay["raw_hypothesis"] = dumped
+        overlay["confidence_band"] = hypothesis.confidence_band
+        overlay["citation_map"] = [c.model_dump() for c in hypothesis.citation_map]
+        overlay["summary"] = summary.model_dump()
+        entry = AuditEvent(
+            ts=_now(),
+            event="investigate",
+            actor=actor,
+            detail=audit_detail,
+        )
+        audit = list(overlay.get("audit") or [])
+        audit.append(entry.model_dump())
+        overlay["audit"] = _trim_audit(audit)
+
+    update_overlay(case_id, _mutate)
+
+
+def persist_hypothesis_edit(
+    case_id: str,
+    *,
+    hypothesis: MatchHypothesis,
+    actor: str | None,
+    audit_detail: dict[str, Any],
+) -> None:
+    """One overlay write for hypothesis edit + audit (keeps raw_hypothesis)."""
+
+    def _mutate(overlay: dict[str, Any]) -> None:
+        dumped = hypothesis.model_dump()
+        overlay["hypothesis"] = dumped
+        overlay["confidence_band"] = hypothesis.confidence_band
+        overlay["citation_map"] = [c.model_dump() for c in hypothesis.citation_map]
+        entry = AuditEvent(
+            ts=_now(),
+            event="hypothesis_edited",
+            actor=actor,
+            detail=audit_detail,
+        )
+        audit = list(overlay.get("audit") or [])
+        audit.append(entry.model_dump())
+        overlay["audit"] = _trim_audit(audit)
+
+    update_overlay(case_id, _mutate)
 
 
 def set_decision(
@@ -126,17 +222,18 @@ def set_decision(
     raw_hypothesis: dict[str, Any] | None = None,
     edited_hypothesis: dict[str, Any] | None = None,
 ) -> None:
-    overlay = load_overlay(case_id)
-    overlay["last_decision"] = decision
-    overlay["reason_code"] = reason_code
-    overlay["decision_actor"] = actor
-    overlay["decision_at"] = _now()
-    if confidence_band is not None:
-        overlay["confidence_band"] = confidence_band
-    if citation_map is not None:
-        overlay["citation_map"] = citation_map
-    if raw_hypothesis is not None:
-        overlay["raw_hypothesis"] = raw_hypothesis
-    if edited_hypothesis is not None:
-        overlay["hypothesis"] = edited_hypothesis
-    save_overlay(case_id, overlay)
+    def _mutate(overlay: dict[str, Any]) -> None:
+        overlay["last_decision"] = decision
+        overlay["reason_code"] = reason_code
+        overlay["decision_actor"] = actor
+        overlay["decision_at"] = _now()
+        if confidence_band is not None:
+            overlay["confidence_band"] = confidence_band
+        if citation_map is not None:
+            overlay["citation_map"] = citation_map
+        if raw_hypothesis is not None:
+            overlay["raw_hypothesis"] = raw_hypothesis
+        if edited_hypothesis is not None:
+            overlay["hypothesis"] = edited_hypothesis
+
+    update_overlay(case_id, _mutate)
