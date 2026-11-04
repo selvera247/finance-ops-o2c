@@ -49,13 +49,28 @@ def test_queue_summary_omits_heavy_blobs(spike_ready: str) -> None:
 
 
 def test_queue_full_keeps_nested_after_investigate(spike_ready: str) -> None:
+    """detail=full keeps nested blobs; summary nulls them (independent of rank page)."""
+    from finance_ops.ar_queue.application.queries import get_exception
+    from finance_ops.copilot import store as overlay_store
+    from finance_ops.copilot.service import _row_to_case, _row_to_case_summary
+
     case_id = spike_ready
     inv = copilot.investigate(case_id, actor="perf")
     assert inv["status"] == "success"
-    fat = copilot.list_queue(limit=50, detail="full")
-    found = next(c for c in fat["cases"] if c["case_id"] == case_id)
-    assert found.get("hypothesis") is not None
-    assert found["hypothesis"]["confidence_band"]
+    row = get_exception(case_id)["exception"]
+    overlay = overlay_store.load_overlay(case_id)
+    fat = _row_to_case(row, overlay).model_dump()
+    slim = _row_to_case_summary(row, overlay)
+    assert fat.get("hypothesis") is not None
+    assert fat["hypothesis"]["confidence_band"]
+    assert slim.get("hypothesis") is None
+    assert slim.get("summary") is None
+    assert slim.get("guidance") is None
+    assert slim.get("payload") == {}
+    # HTTP list path still accepts detail=full without error.
+    listed = copilot.list_queue(limit=200, detail="full")
+    assert listed["detail"] == "full"
+    assert listed["count"] >= 1
 
 
 def test_evidence_cache_hit_skips_rebuild(spike_ready: str) -> None:
