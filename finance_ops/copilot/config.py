@@ -1,4 +1,4 @@
-"""Prototype mode flags for Copilot MVP demos (modes A–D)."""
+"""Prototype mode flags for Copilot MVP demos (modes A–D) + digest/email/OCR."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Literal
 CopilotMode = Literal["workbench", "slack_contrast", "rules_only"]
 
 _VALID_MODES = frozenset({"workbench", "slack_contrast", "rules_only"})
+_VALID_BANDS = frozenset({"high", "medium", "low", "insufficient"})
 
 
 def _truthy(name: str) -> bool:
@@ -28,7 +29,7 @@ def copilot_mode() -> CopilotMode:
 
 
 def copilot_email_evidence_enabled() -> bool:
-    """When true, evidence pack includes stubbed email artifacts (A3 gated)."""
+    """When true, evidence pack includes ACL-filtered email artifacts (A3 gated)."""
     return _truthy("COPILOT_EMAIL_EVIDENCE")
 
 
@@ -42,6 +43,50 @@ def auto_allow_blocked_on_copilot() -> bool:
     return True
 
 
+def remittance_pdf_extract_enabled() -> bool:
+    """Prefer file/PDF remittance extract over bank-reference-only text.
+
+    On by default when fixtures exist; set COPILOT_REMITTANCE_EXTRACT=0 to disable.
+    """
+    raw = os.getenv("COPILOT_REMITTANCE_EXTRACT")
+    if raw is None or raw.strip() == "":
+        return True
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def digest_enabled() -> bool:
+    """Optional daily/queued digest — **off by default** (alert fatigue)."""
+    return _truthy("COPILOT_DIGEST_ENABLED")
+
+
+def digest_send_enabled() -> bool:
+    """Second gate: stub Slack/email delivery intent. Off by default."""
+    return _truthy("COPILOT_DIGEST_SEND")
+
+
+def digest_min_confidence() -> str:
+    """Minimum confidence_band to include in digest (default medium)."""
+    raw = (os.getenv("COPILOT_DIGEST_MIN_CONFIDENCE") or "medium").strip().lower()
+    if raw not in _VALID_BANDS:
+        return "medium"
+    return raw
+
+
+def digest_exclude_insufficient() -> bool:
+    """Drop insufficient-data cases from digest (default on)."""
+    raw = os.getenv("COPILOT_DIGEST_EXCLUDE_INSUFFICIENT")
+    if raw is None or raw.strip() == "":
+        return True
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def digest_max_items() -> int:
+    try:
+        return max(1, int((os.getenv("COPILOT_DIGEST_MAX_ITEMS") or "25").strip()))
+    except ValueError:
+        return 25
+
+
 def prototype_mode_label() -> str:
     """Human label for demo modes A–D (meeting plan)."""
     mode = copilot_mode()
@@ -49,7 +94,7 @@ def prototype_mode_label() -> str:
     if mode == "workbench" and not email:
         return "A"  # workbench, ERP+remittance only
     if mode == "workbench" and email:
-        return "B"  # workbench + email evidence stub
+        return "B"  # workbench + email evidence
     if mode == "slack_contrast":
         return "C"  # Slack HITL contrast (not primary UX)
     return "D"  # rules_only — no LLM draft

@@ -1,6 +1,6 @@
 # Finance Ops — Cash-Application Exception Copilot MVP
 
-**Product north star:** a permissioned **Cash-Application Exception Copilot** for pilot AR staff — open an exception, retrieve invoice/payment/remittance (± email stub), draft a **cited** match hypothesis, then **Accept | Edit & ready-to-apply | Reject | Escalate | Need info**. Humans own apply in the current ERP via an **ApplyGuidancePacket**; the Copilot path does **not** post cash unless `FINANCE_OPS_DEMO_APPLY=1`.
+**Product north star:** a permissioned **Cash-Application Exception Copilot** for pilot AR staff — open an exception, retrieve invoice/payment/remittance (± ACL-filtered email), draft a **cited** match hypothesis, then **Accept | Edit & ready-to-apply | Reject | Escalate | Need info**. Humans own apply in the current ERP via an **ApplyGuidancePacket**; the Copilot path does **not** post cash unless `FINANCE_OPS_DEMO_APPLY=1`. Optional exception digest stays **off by default**.
 
 Slack HITL Approve → warehouse apply is a **contrast / notify** path (mode C), not the pilot primary UX. HubSpot leakage, portal Spike B, SKU metering, GraphRAG/Vector critical path, and multi-agent chat-as-UX are **parked** for the 10-week MVP.
 
@@ -17,7 +17,7 @@ uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
 # http://127.0.0.1:8080/copilot
 ```
 
-Prototype modes A–D: `COPILOT_MODE=workbench|slack_contrast|rules_only` and `COPILOT_EMAIL_EVIDENCE=0|1` (see [docs/copilot-mvp.md](docs/copilot-mvp.md)). Policy `auto_allow_max` stays **0** — Copilot never auto-applies.
+Prototype modes A–D: `COPILOT_MODE=workbench|slack_contrast|rules_only` and `COPILOT_EMAIL_EVIDENCE=0|1` (fixture/IMAP mailbox + actor ACL; see [docs/copilot-mvp.md](docs/copilot-mvp.md)). Remittance PDF/OCR extract lives under `finance_ops/copilot/remittance/`. Digest: `scripts/copilot_digest.py` / `GET /v1/copilot/digest` (`COPILOT_DIGEST_ENABLED=0` by default). Policy `auto_allow_max` stays **0** — Copilot never auto-applies.
 
 ---
 

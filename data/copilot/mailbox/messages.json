@@ -1,0 +1,54 @@
+[
+  {
+    "message_id": "MSG-1001",
+    "customer_id": "C-1042",
+    "thread_id": "THR-ACME-1001",
+    "subject": "Payment advice for PAY-1001",
+    "from_addr": "ap@acme-north.example",
+    "to_addrs": ["ar-shared@distributor.example"],
+    "sent_at": "2026-10-05T14:22:00Z",
+    "snippet": "Please apply our wire PAY-1001 to INV-84219 for 1842.50 USD.",
+    "body": "Hello AR team,\n\nPlease apply our wire PAY-1001 to INV-84219 for 1842.50 USD.\nRemittance attached in prior portal upload.\n\nThanks,\nAcme AP",
+    "payment_refs": ["PAY-1001"],
+    "invoice_refs": ["INV-84219"]
+  },
+  {
+    "message_id": "MSG-1002",
+    "customer_id": "C-1042",
+    "thread_id": "THR-ACME-1002",
+    "subject": "Re: remittance PO-88421",
+    "from_addr": "ap@acme-north.example",
+    "to_addrs": ["ar-shared@distributor.example"],
+    "sent_at": "2026-10-05T16:01:00Z",
+    "snippet": "PAY-1002 relates to PO-88421 / INV-84219 plant shipment.",
+    "body": "PAY-1002 relates to PO-88421. Amount 2490.00. Confirm open invoice INV-84219 or successor.",
+    "payment_refs": ["PAY-1002"],
+    "invoice_refs": ["INV-84219"]
+  },
+  {
+    "message_id": "MSG-4001",
+    "customer_id": "C-4417",
+    "thread_id": "THR-BETA-4001",
+    "subject": "Remittance INV-77110",
+    "from_addr": "billing@betaco.example",
+    "to_addrs": ["ar-shared@distributor.example"],
+    "sent_at": "2026-10-02T09:10:00Z",
+    "snippet": "Applying PAY-4001 to INV-77110.",
+    "body": "Applying PAY-4001 to INV-77110 amount 1250.00.",
+    "payment_refs": ["PAY-4001"],
+    "invoice_refs": ["INV-77110"]
+  },
+  {
+    "message_id": "MSG-OTHER-CUST",
+    "customer_id": "C-2081",
+    "thread_id": "THR-OTHER",
+    "subject": "Do not leak — other customer remittance",
+    "from_addr": "ap@other.example",
+    "to_addrs": ["ar-shared@distributor.example"],
+    "sent_at": "2026-10-04T11:00:00Z",
+    "snippet": "Confidential remittance for C-2081 PAY-2001.",
+    "body": "Confidential remittance for C-2081 PAY-2001 → INV-92001. Cross-customer ACL must drop this.",
+    "payment_refs": ["PAY-2001"],
+    "invoice_refs": ["INV-92001"]
+  }
+]

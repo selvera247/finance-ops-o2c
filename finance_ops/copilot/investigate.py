@@ -15,8 +15,11 @@ from finance_ops.ar_queue.domain.matching import score_against_invoices
 from finance_ops.copilot.config import (
     copilot_email_evidence_enabled,
     copilot_mode,
+    remittance_pdf_extract_enabled,
 )
 from finance_ops.copilot import store as case_store
+from finance_ops.copilot.email_evidence import retrieve_email_evidence
+from finance_ops.copilot.remittance import extract_remittance_document
 from finance_ops.copilot.types import (
     Citation,
     ConfidenceBand,
@@ -32,7 +35,7 @@ from data_plane import repository as repo
 PROMPT_VERSION = "copilot-investigate-v2"
 MODEL_STUB = "deterministic-structured-v2"
 MODEL_RULES = "rules_only"
-RETRIEVER_VERSION = "copilot-evidence-v1"
+RETRIEVER_VERSION = "copilot-evidence-v2"
 
 _THIN_REMITTANCE = re.compile(
     r"\bno invoice\b|\bmissing remittance\b|\bunknown\b|\bn/?a\b",
@@ -109,6 +112,7 @@ def build_evidence_pack(
     payment: dict[str, Any] | None,
     invoices: list[dict[str, Any]],
     scored: dict[str, Any],
+    actor: str | None = "system",
 ) -> EvidencePack:
     items: list[EvidenceItem] = []
     if payment:
@@ -132,13 +136,38 @@ def build_evidence_pack(
             )
         )
         ref = str(payment.get("reference") or "")
-        if ref:
+        rem_doc = None
+        if remittance_pdf_extract_enabled():
+            rem_doc = extract_remittance_document(
+                payment_id=payment_id,
+                customer_id=customer_id,
+                reference_text=ref or None,
+            )
+        if rem_doc is not None:
+            items.append(
+                EvidenceItem(
+                    source_id=rem_doc.document_id or f"REM-{payment_id}",
+                    source_type="remittance",
+                    label=(
+                        f"Remittance extract ({rem_doc.method}, "
+                        f"conf={rem_doc.confidence:.2f})"
+                    ),
+                    fields=rem_doc.to_evidence_fields(),
+                )
+            )
+        elif ref:
             items.append(
                 EvidenceItem(
                     source_id=f"REM-{payment_id}",
                     source_type="remittance",
                     label="Remittance / bank reference text",
-                    fields={"text": ref, "extracted_fields": {"raw_reference": ref}},
+                    fields={
+                        "text": ref,
+                        "extracted_fields": {"raw_reference": ref},
+                        "confidence": 0.4,
+                        "thin_evidence": bool(_THIN_REMITTANCE.search(ref)),
+                        "method": "bank_reference",
+                    },
                 )
             )
 
@@ -174,19 +203,13 @@ def build_evidence_pack(
 
     email_on = copilot_email_evidence_enabled()
     if email_on and customer_id:
-        items.append(
-            EvidenceItem(
-                source_id=f"EMAIL-STUB-{customer_id}",
-                source_type="email",
-                label="Email remittance thread (stub — ACL pending)",
-                fields={
-                    "subject": f"Payment advice for {payment_id}",
-                    "snippet": "Stub: email retrieve gated on A3 / COPILOT_EMAIL_EVIDENCE",
-                    "customer_id": customer_id,
-                },
-                stub=True,
-            )
+        email_items = retrieve_email_evidence(
+            customer_id=customer_id,
+            payment_id=payment_id,
+            actor=actor,
+            limit=5,
         )
+        items.extend(email_items)
 
     return EvidencePack(
         case_id=case_id,
@@ -246,6 +269,30 @@ def _citations_from_evidence(
     return citations
 
 
+def _remittance_thin_from_evidence(
+    evidence: EvidencePack,
+    payment: dict[str, Any] | None,
+) -> bool:
+    """Prefer structured remittance extract confidence; fall back to bank reference."""
+    for item in evidence.items:
+        if item.source_type != "remittance":
+            continue
+        fields = item.fields or {}
+        if "thin_evidence" in fields:
+            return bool(fields.get("thin_evidence"))
+        conf = fields.get("confidence")
+        if conf is not None and float(conf) < 0.45:
+            return True
+        extracted = fields.get("extracted_fields") or {}
+        if extracted.get("invoice_ids"):
+            return False
+        text = str(fields.get("text") or extracted.get("raw_reference") or "")
+        if text:
+            return bool(_THIN_REMITTANCE.search(text))
+    ref = str((payment or {}).get("reference") or "")
+    return bool(_THIN_REMITTANCE.search(ref)) if ref else True
+
+
 def _draft_hypothesis(
     *,
     case_id: str,
@@ -258,8 +305,7 @@ def _draft_hypothesis(
 ) -> MatchHypothesis:
     candidates = scored.get("candidates") or []
     top = candidates[0] if candidates else None
-    ref = str((payment or {}).get("reference") or "")
-    thin_remittance = bool(_THIN_REMITTANCE.search(ref)) if ref else True
+    thin_remittance = _remittance_thin_from_evidence(evidence, payment)
 
     band = _confidence_from_candidate(top, thin_remittance=thin_remittance)
     abstain = _should_abstain(top, thin_remittance=thin_remittance, band=band)
@@ -465,6 +511,7 @@ def investigate_case(
         payment=payment,
         invoices=invoices,
         scored=scored,
+        actor=actor,
     )
     hypothesis = _draft_hypothesis(
         case_id=case_id,

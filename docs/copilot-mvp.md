@@ -20,8 +20,9 @@ uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
 | --- | --- | --- |
 | GET | `/v1/copilot/status` | Mode flags |
 | GET | `/v1/copilot/queue` | Ranked cases (`?sync=true` materializes warehouse) |
+| GET | `/v1/copilot/digest` | Optional ranked digest (`?force=1` dry-run; off by default) |
 | GET | `/v1/copilot/cases/{id}` | Case detail + overlay hypothesis |
-| GET | `/v1/copilot/cases/{id}/evidence` | Evidence pack |
+| GET | `/v1/copilot/cases/{id}/evidence` | Evidence pack (`?actor=` for email ACL) |
 | POST | `/v1/copilot/cases/{id}/investigate` | Bounded retrieve → rules → draft (write-gated) |
 | POST | `/v1/copilot/cases/{id}/hypothesis` | Edit lines (write-gated) |
 | POST | `/v1/copilot/cases/{id}/decision` | Decision → guidance / status (write-gated) |
@@ -34,11 +35,70 @@ OpenAPI: `/docs`. Thin workbench: `/copilot`.
 | Mode | Env | What it demos |
 | --- | --- | --- |
 | **A** | `COPILOT_MODE=workbench` `COPILOT_EMAIL_EVIDENCE=0` | Primary Copilot UX; ERP + remittance only |
-| **B** | `COPILOT_MODE=workbench` `COPILOT_EMAIL_EVIDENCE=1` | Same + **stub** email evidence item |
+| **B** | `COPILOT_MODE=workbench` `COPILOT_EMAIL_EVIDENCE=1` | Same + ACL-filtered email evidence (fixture or IMAP) |
 | **C** | `COPILOT_MODE=slack_contrast` | Slack HITL Approve/Reject as **contrast** (not SoT) |
 | **D** | `COPILOT_MODE=rules_only` | Deterministic candidates only; skip LLM draft path |
 
 Set `COPILOT_FORCE_DETERMINISTIC=1` to keep the structured draft path even when `GOOGLE_API_KEY` is present (CI default via the scoreboard runner).
+
+## Email evidence (gated, read-only)
+
+Off unless `COPILOT_EMAIL_EVIDENCE=1`. **Never sends email.**
+
+| Piece | Detail |
+| --- | --- |
+| Fixture mailbox (CI) | `data/copilot/mailbox/messages.json` via `FixtureMailboxAdapter` |
+| IMAP (optional) | Set `COPILOT_IMAP_HOST` / `USER` / `PASSWORD` (or `COPILOT_MAILBOX_BACKEND=imap`) |
+| Actor ACL | `data/copilot/actor_acl.json` (+ optional `COPILOT_ACTOR_CUSTOMERS`) |
+| Fail closed | Unknown actor → no email items; messages with mismatched `customer_id` dropped |
+
+```bash
+COPILOT_EMAIL_EVIDENCE=1 PYTHONPATH=. pytest tests/test_copilot_email_ocr_digest.py -q -k email
+# Demo against Spike A
+COPILOT_EMAIL_EVIDENCE=1 PYTHONPATH=. python -c "
+from finance_ops.copilot import service as c
+c.ensure_queue(sync=True)
+print(c.get_evidence(c.case_id_for_payment('PAY-1001'), actor='pilot'))
+"
+```
+
+## Remittance PDF / OCR extract
+
+Pluggable extractor under `finance_ops/copilot/remittance/`:
+
+1. **Deterministic PDF text** (stdlib content-stream parse; optional `pypdf` if installed)
+2. **OCR hook** — `StubOcrProvider` (sibling `.txt` fixtures for CI) or `TesseractOcrProvider` when `tesseract` is on PATH (`COPILOT_OCR_PROVIDER=auto|stub|tesseract`)
+3. Extraction **confidence** + `thin_evidence` feed the existing abstain path
+
+Fixtures: `data/copilot/remittance/REM-PAY-1001.pdf` (+ `.txt` / `.json`), `REM-SCAN-THIN.*` for low-confidence OCR.
+
+```bash
+PYTHONPATH=. python -c "
+from finance_ops.copilot.remittance import extract_remittance_document
+doc = extract_remittance_document(payment_id='PAY-1001', customer_id='C-1042')
+print(doc.method, doc.confidence, doc.extracted_fields)
+"
+```
+
+## Optional digest (off by default)
+
+Ranking stays in-queue. A digest of ranked exceptions is **disabled by default** to avoid alert fatigue until a pilot precision bar is agreed.
+
+| Env | Default | Meaning |
+| --- | --- | --- |
+| `COPILOT_DIGEST_ENABLED` | `0` | Build digest payload / artifact |
+| `COPILOT_DIGEST_SEND` | `0` | Second gate: Slack/email **send stub** (no real SMTP/HTTP post in MVP) |
+| `COPILOT_DIGEST_MIN_CONFIDENCE` | `medium` | Quality gate — drop lower bands |
+| `COPILOT_DIGEST_EXCLUDE_INSUFFICIENT` | `1` | Drop abstain / insufficient-data cases |
+
+```bash
+# Dry-run without enabling in env
+PYTHONPATH=. python scripts/copilot_digest.py --force --sync
+# Enable for scheduled/CI-style run
+COPILOT_DIGEST_ENABLED=1 PYTHONPATH=. python scripts/copilot_digest.py --sync
+# HTTP dry-run
+curl -s 'http://127.0.0.1:8080/v1/copilot/digest?force=true' | head
+```
 
 ## Guidance-only apply + demo flag
 
@@ -98,10 +158,10 @@ Accept / edit rate + edit distance are logged via the `decision` audit trail (`r
 `POST .../investigate` always:
 
 1. Loads payment + open invoices (warehouse)
-2. Builds an evidence pack (payment, remittance text, invoices, `matching.py` rule candidates; optional email stub)
+2. Builds an evidence pack (payment, remittance extract/PDF/OCR when available, invoices, `matching.py` rule candidates; optional ACL-filtered email when enabled)
 3. Scores candidates via `matching.py`
 4. Emits a **structured** `MatchHypothesis` with `citation_map` pointing only at retrieved evidence ids
-5. **Abstains** (`insufficient_data`, `confidence_band=insufficient`) on thin remittance / amount-only weak cues / no candidates
+5. **Abstains** (`insufficient_data`, `confidence_band=insufficient`) on thin remittance / low extract confidence / amount-only weak cues / no candidates
 6. Optional LLM summary when `GOOGLE_API_KEY` / `GEMINI_API_KEY` is set and `COPILOT_FORCE_DETERMINISTIC` is off — line items stay deterministic from rules
 
 ## Audit minimum fields
@@ -117,17 +177,21 @@ Investigate + decision events persist: `case_id`, `customer_id`, `payment_id`, `
 
 ## Parked (not this slice)
 
-- Production email ACL / OCR remittance suite
+- SSO / IdP (keep allowlist actor ACL; no IdP integration)
 - HubSpot leakage / free `/leakage` as MVP UX
 - Portal Spike B as primary path
 - Fine-tuning, Neo4j / Vector Search critical path
 - Broad ADK multi-agent rewrite; Slack-as-primary decision UI
-- Cross-customer AuthZ beyond allowlist stubs; digest alerts productization
+- Real Slack/SMTP digest delivery (stub only); outbound collections email
 
 ## Module map
 
 ```text
-finance_ops/copilot/     types · config · investigate · service · router · store
+finance_ops/copilot/     types · config · investigate · service · router · store · digest
+finance_ops/copilot/email_evidence/   ACL + fixture/IMAP adapters
+finance_ops/copilot/remittance/       PDF text + OCR provider interface
+data/copilot/            mailbox + remittance fixtures + actor_acl.json
+scripts/copilot_digest.py
 finance_ops/ar_queue/    matching · statuses (extended) · sync/queries
 finance_ops/web/copilot.html
 evals/copilot/           gold.yaml · checkers · run_scoreboard.py
