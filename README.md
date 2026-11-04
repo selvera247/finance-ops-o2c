@@ -1,4 +1,27 @@
-# Finance Multi-Agent (Google ADK) + GUI Connector
+# Finance Ops — Cash-Application Exception Copilot MVP
+
+**Product north star:** a permissioned **Cash-Application Exception Copilot** for pilot AR staff — open an exception, retrieve invoice/payment/remittance (± email stub), draft a **cited** match hypothesis, then **Accept | Edit & ready-to-apply | Reject | Escalate | Need info**. Humans own apply in the current ERP via an **ApplyGuidancePacket**; the Copilot path does **not** post cash unless `FINANCE_OPS_DEMO_APPLY=1`.
+
+Slack HITL Approve → warehouse apply is a **contrast / notify** path (mode C), not the pilot primary UX. HubSpot leakage, portal Spike B, SKU metering, GraphRAG/Vector critical path, and multi-agent chat-as-UX are **parked** for the 10-week MVP.
+
+Docs: [docs/copilot-mvp.md](docs/copilot-mvp.md) · OpenAPI `/docs` · workbench `/copilot`
+
+Legacy portfolio surfaces (ADK agents, free wedges, Cloud Run demos) remain in-tree for reuse.
+
+### Copilot quick start (Spike A)
+
+```bash
+PYTHONPATH=. python scripts/load_spike_a.py --replace-customers
+PYTHONPATH=. python scripts/copilot_spike_a_e2e.py
+uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
+# http://127.0.0.1:8080/copilot
+```
+
+Prototype modes A–D: `COPILOT_MODE=workbench|slack_contrast|rules_only` and `COPILOT_EMAIL_EVIDENCE=0|1` (see [docs/copilot-mvp.md](docs/copilot-mvp.md)). Policy `auto_allow_max` stays **0** — Copilot never auto-applies.
+
+---
+
+## Legacy: Multi-Agent (Google ADK) + GUI Connector
 
 End-to-end **Data → AI** finance ops demo:
 
@@ -116,7 +139,8 @@ HITL_PUBLIC_BASE_URL=https://your-public-host   # signed webhook URI base
 
 ## Portfolio master layer (complete)
 
-- **Next product bet:** [docs/ar-exception-queue.md](docs/ar-exception-queue.md) — feed → triage → Slack HITL → apply (not per-seat UI)
+- **North star (MVP):** [docs/copilot-mvp.md](docs/copilot-mvp.md) — Copilot queue → evidence → cited draft → decision → guidance packet
+- **Parked contrast path:** [docs/ar-exception-queue.md](docs/ar-exception-queue.md) — feed → triage → Slack HITL → apply (not pilot primary UX)
 - **Slice 1 queue metrics:** `PYTHONPATH=. python scripts/ar_exception_queue.py` · `GET /v1/ar_exception_queue` · tool `ar_exception_queue_summary`
 - **Slice 2 live feed:** `PYTHONPATH=. python scripts/run_ar_feed_triage.py` · `POST /v1/ar_exception_triage` · `data/ar_feed/`
 - **Feed/triage debug notes:** [docs/debug-ar-feed-triage.md](docs/debug-ar-feed-triage.md)

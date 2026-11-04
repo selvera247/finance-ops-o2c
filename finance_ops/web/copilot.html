@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cash-App Exception Copilot</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --ink: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #3d8bfd;
+      --ok: #3ecf8e;
+      --warn: #e6a23c;
+      --danger: #f07178;
+      --line: rgba(232, 238, 244, 0.12);
+      --font: "IBM Plex Sans", "Segoe UI", sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--ink);
+      font-family: var(--font);
+      background: radial-gradient(900px 500px at 10% -10%, #1c3a5f, transparent),
+                  radial-gradient(700px 400px at 100% 0%, #1a3d32, transparent),
+                  var(--bg);
+    }
+    header {
+      padding: 1rem 1.25rem; border-bottom: 1px solid var(--line);
+      display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.02em; }
+    header .meta { color: var(--muted); font-size: 0.85rem; }
+    main { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 58px); }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+    aside, section { padding: 1rem; }
+    aside { border-right: 1px solid var(--line); background: rgba(26,34,44,0.55); }
+    .row { padding: 0.65rem 0.75rem; border: 1px solid var(--line); border-radius: 8px;
+           margin-bottom: 0.5rem; cursor: pointer; background: var(--panel); }
+    .row:hover, .row.active { border-color: var(--accent); }
+    .row .id { font-family: var(--mono); font-size: 0.8rem; }
+    .row .amt { font-weight: 600; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+    h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+    pre { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 0.75rem;
+          background: #0c1015; padding: 0.75rem; border-radius: 6px; max-height: 240px; overflow: auto; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    button {
+      border: 0; border-radius: 6px; padding: 0.45rem 0.75rem; cursor: pointer;
+      background: var(--accent); color: #fff; font-weight: 600; font-size: 0.85rem;
+    }
+    button.secondary { background: #2a3542; }
+    button.danger { background: var(--danger); }
+    button.warn { background: var(--warn); color: #1a1200; }
+    input, select { background: #0c1015; color: var(--ink); border: 1px solid var(--line);
+                    border-radius: 6px; padding: 0.4rem 0.55rem; }
+    .banner { background: #243044; border: 1px solid var(--accent); padding: 0.6rem 0.8rem;
+              border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Cash-App Exception Copilot</h1>
+    <span class="meta" id="modeMeta">loading…</span>
+  </header>
+  <main>
+    <aside>
+      <div class="actions" style="margin-bottom:0.75rem">
+        <button type="button" id="btnSync">Sync + refresh</button>
+      </div>
+      <div id="queue"></div>
+    </aside>
+    <section>
+      <div class="banner">Guidance-only apply: Accept emits an ApplyGuidancePacket for ERP copy/deep-link. Warehouse apply requires <code>FINANCE_OPS_DEMO_APPLY=1</code>.</div>
+      <div id="detail" class="muted">Select a case from the queue.</div>
+    </section>
+  </main>
+  <script>
+    let selected = null;
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+        ...opts,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail?.error || data.detail || res.statusText);
+      return data;
+    }
+
+    async function refreshStatus() {
+      const s = await api("/v1/copilot/status");
+      $("modeMeta").textContent =
+        `mode ${s.prototype_mode}/${s.mode} · email=${s.email_evidence} · demo_apply=${s.demo_apply}`;
+    }
+
+    async function loadQueue(sync = false) {
+      const q = await api(`/v1/copilot/queue?sync=${sync ? "true" : "false"}&lane=cash_app`);
+      const root = $("queue");
+      root.innerHTML = "";
+      if (!q.cases?.length) {
+        root.innerHTML = `<p class="muted">No cases. Click Sync (loads Spike A / warehouse).</p>`;
+        return;
+      }
+      for (const c of q.cases) {
+        const el = document.createElement("div");
+        el.className = "row" + (selected === c.case_id ? " active" : "");
+        el.innerHTML = `<div class="id">${c.case_id}</div>
+          <div class="amt">${c.currency || "USD"} ${c.amount ?? "—"} · ${c.status}</div>
+          <div class="muted">${c.payment_id || ""} · aging ${c.aging_days ?? "?"}d · score ${c.match_score ?? "—"}</div>`;
+        el.onclick = () => openCase(c.case_id);
+        root.appendChild(el);
+      }
+    }
+
+    async function openCase(caseId) {
+      selected = caseId;
+      await loadQueue(false);
+      const [c, e, a] = await Promise.all([
+        api(`/v1/copilot/cases/${caseId}`),
+        api(`/v1/copilot/cases/${caseId}/evidence`),
+        api(`/v1/copilot/cases/${caseId}/audit`),
+      ]);
+      const caseObj = c.case;
+      $("detail").innerHTML = `
+        <div class="panel">
+          <h2>${caseObj.case_id} · ${caseObj.status}</h2>
+          <p class="muted">${caseObj.payment_id} · ${caseObj.customer_id} · ${caseObj.currency} ${caseObj.amount}</p>
+          <div class="actions">
+            <button type="button" id="btnInv">Investigate</button>
+            <button type="button" class="secondary" id="btnAccept">Accept</button>
+            <button type="button" class="secondary" id="btnEdit">Edit & ready</button>
+            <button type="button" class="danger" id="btnReject">Reject</button>
+            <button type="button" class="warn" id="btnEsc">Escalate</button>
+            <button type="button" class="warn" id="btnNeed">Need info</button>
+          </div>
+        </div>
+        <div class="panel"><h2>Hypothesis</h2><pre id="hypPre">${JSON.stringify(caseObj.hypothesis || {}, null, 2)}</pre></div>
+        <div class="panel"><h2>Evidence (${e.evidence?.items?.length || 0})</h2><pre>${JSON.stringify(e.evidence, null, 2)}</pre></div>
+        <div class="panel"><h2>Audit</h2><pre>${JSON.stringify(a.audit || [], null, 2)}</pre></div>
+      `;
+      $("btnInv").onclick = async () => {
+        const out = await api(`/v1/copilot/cases/${caseId}/investigate`, { method: "POST", body: "{}" });
+        $("hypPre").textContent = JSON.stringify(out.hypothesis, null, 2);
+        await openCase(caseId);
+      };
+      const decide = async (decision, reason_code = null) => {
+        const body = { decision, actor: "workbench", reason_code };
+        const out = await api(`/v1/copilot/cases/${caseId}/decision`, {
+          method: "POST", body: JSON.stringify(body),
+        });
+        alert(JSON.stringify(out, null, 2));
+        await openCase(caseId);
+        await loadQueue(false);
+      };
+      $("btnAccept").onclick = () => decide("accept");
+      $("btnEdit").onclick = () => decide("edit_ready_to_apply");
+      $("btnReject").onclick = () => decide("reject", "reject_other");
+      $("btnEsc").onclick = () => decide("escalate", "escalate_ambiguous");
+      $("btnNeed").onclick = () => decide("need_info", "need_info_remittance");
+    }
+
+    $("btnSync").onclick = async () => { await loadQueue(true); };
+    refreshStatus().then(() => loadQueue(true)).catch((err) => {
+      $("queue").textContent = String(err);
+    });
+  </script>
+</body>
+</html>
