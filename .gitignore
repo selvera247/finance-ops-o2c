@@ -11,6 +11,7 @@ __pycache__/
 data/incoming/**/processed/
 data/incoming/legacy_bank/*.csv
 evals/results/trajectory_*.json
+evals/copilot/results/
 *.egg-info/
 dist/
 build/

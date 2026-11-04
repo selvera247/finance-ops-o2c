@@ -202,6 +202,7 @@ def update_hypothesis(case_id: str, update: HypothesisUpdate, *, actor: str = "a
     row = got["exception"]
     overlay = case_store.load_overlay(case_id)
     existing = overlay.get("hypothesis") or {}
+    raw_snapshot = overlay.get("raw_hypothesis") or existing
     hyp = MatchHypothesis(
         case_id=case_id,
         payment_id=str(row.get("source_id") or existing.get("payment_id") or ""),
@@ -219,14 +220,26 @@ def update_hypothesis(case_id: str, update: HypothesisUpdate, *, actor: str = "a
         raw_notes=update.raw_notes if update.raw_notes is not None else existing.get("raw_notes"),
         edited=True,
     )
-    case_store.set_hypothesis(case_id, hyp)
+    # Preserve raw; only update current (edited) hypothesis.
+    case_store.set_hypothesis(case_id, hyp, raw=False)
     case_store.append_audit(
         case_id,
         "hypothesis_edited",
         actor=actor,
-        detail={"lines": [ln.model_dump() for ln in hyp.lines]},
+        detail={
+            "case_id": case_id,
+            "customer_id": hyp.customer_id,
+            "payment_id": hyp.payment_id,
+            "invoice_ids": [ln.invoice_id for ln in hyp.lines],
+            "lines": [ln.model_dump() for ln in hyp.lines],
+            "citation_map": [c.model_dump() for c in hyp.citation_map],
+            "confidence_band": hyp.confidence_band,
+            "raw_hypothesis": raw_snapshot,
+            "edited_hypothesis": hyp.model_dump(),
+            "actor": actor,
+        },
     )
-    return {"status": "success", "hypothesis": hyp.model_dump()}
+    return {"status": "success", "hypothesis": hyp.model_dump(), "raw_hypothesis": raw_snapshot}
 
 
 def _build_guidance(
@@ -377,19 +390,34 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
                 row["recommended_invoice_id"] = hypothesis.lines[0].invoice_id
         row["status"] = new_status
         upsert_exception(row)
+        raw_hyp = overlay.get("raw_hypothesis") or hypothesis.model_dump()
         case_store.set_decision(
             case_id,
             decision=body.decision.value,
             reason_code=body.reason_code,
+            actor=body.actor,
+            confidence_band=hypothesis.confidence_band,
+            citation_map=[c.model_dump() for c in hypothesis.citation_map],
+            raw_hypothesis=raw_hyp if isinstance(raw_hyp, dict) else hypothesis.model_dump(),
+            edited_hypothesis=hypothesis.model_dump(),
         )
         case_store.append_audit(
             case_id,
             "decision",
             actor=body.actor,
             detail={
+                "case_id": case_id,
+                "customer_id": row.get("customer_id"),
+                "payment_id": guidance.payment_id,
+                "invoice_ids": guidance.invoice_ids,
                 "decision": body.decision.value,
                 "reason_code": body.reason_code,
                 "notes": body.notes,
+                "actor": body.actor,
+                "confidence_band": hypothesis.confidence_band,
+                "citation_map": [c.model_dump() for c in hypothesis.citation_map],
+                "raw_hypothesis": raw_hyp,
+                "edited_hypothesis": hypothesis.model_dump(),
                 "guidance": True,
                 "warehouse_applied": guidance.warehouse_applied,
                 "demo_apply": demo_apply_enabled(),
@@ -412,19 +440,43 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
     new_status = status_for_decision(body.decision)
     row["status"] = new_status
     upsert_exception(row)
+    overlay = case_store.load_overlay(case_id)
+    hyp_data = overlay.get("hypothesis")
+    hyp_obj = MatchHypothesis.model_validate(hyp_data) if hyp_data else None
+    raw_hyp = overlay.get("raw_hypothesis")
     case_store.set_decision(
         case_id,
         decision=body.decision.value,
         reason_code=body.reason_code,
+        actor=body.actor,
+        confidence_band=(hyp_obj.confidence_band if hyp_obj else None),
+        citation_map=(
+            [c.model_dump() for c in hyp_obj.citation_map] if hyp_obj else None
+        ),
+        raw_hypothesis=raw_hyp if isinstance(raw_hyp, dict) else None,
+        edited_hypothesis=hyp_obj.model_dump() if hyp_obj else None,
     )
     case_store.append_audit(
         case_id,
         "decision",
         actor=body.actor,
         detail={
+            "case_id": case_id,
+            "customer_id": row.get("customer_id"),
+            "payment_id": row.get("source_id"),
+            "invoice_ids": (
+                [ln.invoice_id for ln in hyp_obj.lines] if hyp_obj else []
+            ),
             "decision": body.decision.value,
             "reason_code": body.reason_code,
             "notes": body.notes,
+            "actor": body.actor,
+            "confidence_band": hyp_obj.confidence_band if hyp_obj else None,
+            "citation_map": (
+                [c.model_dump() for c in hyp_obj.citation_map] if hyp_obj else []
+            ),
+            "raw_hypothesis": raw_hyp,
+            "edited_hypothesis": hyp_obj.model_dump() if hyp_obj else None,
             "guidance": False,
             "warehouse_applied": False,
             "auto_apply_fired": False,
@@ -457,8 +509,14 @@ def get_audit(case_id: str) -> dict[str, Any]:
         "audit": overlay.get("audit") or [],
         "last_decision": overlay.get("last_decision"),
         "reason_code": overlay.get("reason_code"),
+        "decision_actor": overlay.get("decision_actor"),
+        "decision_at": overlay.get("decision_at"),
+        "confidence_band": overlay.get("confidence_band"),
+        "citation_map": overlay.get("citation_map"),
+        "raw_hypothesis": overlay.get("raw_hypothesis"),
         "hypothesis": overlay.get("hypothesis"),
         "guidance": overlay.get("guidance"),
+        "updated_at": overlay.get("updated_at"),
     }
 
 

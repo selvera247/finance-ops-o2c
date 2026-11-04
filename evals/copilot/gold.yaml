@@ -1,0 +1,84 @@
+# Copilot gold set — Spike A / fixture cases for citation + harmful-error + abstain.
+# Labels are SME-seeded stand-ins; ADM owns real labeling with pilots in Weeks 5–6.
+version: "copilot-gold-v1"
+source: data/spike_a
+targets:
+  citation_validity: 0.95
+  harmful_error_rate_max: 0.02
+  insufficient_calibration: 0.90
+
+cases:
+  - id: spike-a-pay-1001-exact
+    payment_id: PAY-1001
+    customer_id: C-1042
+    notes: "Invoice id + amount in remittance — clear match"
+    expect:
+      should_abstain: false
+      gold_invoice_ids: ["INV-84219"]
+      gold_amounts: [1842.50]
+      amount_tolerance: 0.01
+      required_source_types: ["payment", "invoice", "remittance"]
+
+  - id: spike-a-pay-1002-po
+    payment_id: PAY-1002
+    customer_id: C-1042
+    notes: "PO in remittance; amount differs from INV-84219 — human should edit"
+    expect:
+      should_abstain: false
+      gold_invoice_ids: ["INV-84219"]
+      gold_amounts: [2490.0]
+      amount_tolerance: 0.01
+      # Rubber-stamping rule amount (= payment) onto wrong invoice amount is OK
+      # only when invoice_id is gold; wrong invoice_id is harmful.
+      allow_amount_from_payment: true
+
+  - id: spike-a-pay-4001-remittance
+    payment_id: PAY-4001
+    customer_id: C-4417
+    notes: "Remittance cites INV-77110"
+    expect:
+      should_abstain: false
+      gold_invoice_ids: ["INV-77110"]
+      gold_amounts: [1250.0]
+      amount_tolerance: 0.01
+      required_source_types: ["payment", "invoice", "remittance"]
+
+  - id: spike-a-pay-2002-po-exact
+    payment_id: PAY-2002
+    customer_id: C-2081
+    notes: "PO-2002 + amount align with INV-92002"
+    expect:
+      should_abstain: false
+      gold_invoice_ids: ["INV-92002"]
+      gold_amounts: [4497.0]
+      amount_tolerance: 0.01
+
+  - id: spike-a-pay-3001-orphan
+    payment_id: PAY-3001
+    customer_id: C-3329
+    notes: "Orphan customer — no open invoices; must abstain"
+    expect:
+      should_abstain: true
+      gold_invoice_ids: []
+      gold_amounts: []
+
+  - id: spike-a-pay-2005-thin
+    payment_id: PAY-2005
+    customer_id: C-2081
+    notes: "No invoice noted; amount near INV-92004 but thin evidence — prefer abstain/low"
+    expect:
+      should_abstain: true
+      gold_invoice_ids: []
+      gold_amounts: []
+      # If model proposes confidently without remittance cue, count as miscalibration
+      thin_evidence: true
+
+  - id: spike-a-pay-2001-amount-only
+    payment_id: PAY-2001
+    customer_id: C-2081
+    notes: "Amount-only cue (no invoice/PO in remittance) — abstain, do not rubber-stamp"
+    expect:
+      should_abstain: true
+      gold_invoice_ids: []
+      gold_amounts: []
+      thin_evidence: true

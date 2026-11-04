@@ -1,8 +1,14 @@
-"""Bounded investigate playbook — rules first, optional LLM summary stub."""
+"""Bounded investigate playbook — matching.py candidates + cited structured draft.
+
+Deterministic by default (CI-safe). Optional LLM summary when API keys are present
+and COPILOT_FORCE_DETERMINISTIC is unset / false.
+"""
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from typing import Any
 
 from finance_ops.ar_queue.domain.matching import score_against_invoices
@@ -23,21 +29,76 @@ from finance_ops.copilot.types import (
 from data_plane import repository as repo
 
 
-PROMPT_VERSION = "copilot-investigate-v1"
-MODEL_STUB = "deterministic-stub"
+PROMPT_VERSION = "copilot-investigate-v2"
+MODEL_STUB = "deterministic-structured-v2"
 MODEL_RULES = "rules_only"
+RETRIEVER_VERSION = "copilot-evidence-v1"
+
+_THIN_REMITTANCE = re.compile(
+    r"\bno invoice\b|\bmissing remittance\b|\bunknown\b|\bn/?a\b",
+    re.IGNORECASE,
+)
 
 
-def _confidence_from_score(score: float | None, has_candidates: bool) -> ConfidenceBand:
-    if not has_candidates or score is None:
+def _truthy(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _force_deterministic() -> bool:
+    return _truthy("COPILOT_FORCE_DETERMINISTIC")
+
+
+def _llm_available() -> bool:
+    if _force_deterministic():
+        return False
+    return bool(
+        os.getenv("GOOGLE_API_KEY", "").strip()
+        or os.getenv("GEMINI_API_KEY", "").strip()
+    )
+
+
+def _confidence_from_candidate(
+    top: dict[str, Any] | None,
+    *,
+    thin_remittance: bool,
+) -> ConfidenceBand:
+    if not top:
         return "insufficient"
-    if score >= 1.0:
+    score = float(top.get("score") or 0)
+    reasons = {str(r) for r in (top.get("reasons") or [])}
+    strong = bool(reasons & {"invoice_id_in_reference", "po_in_reference"})
+    if thin_remittance and not strong:
+        return "insufficient"
+    if score >= 1.0 and strong:
         return "high"
     if score >= 0.7:
         return "medium"
+    if score >= 0.5 and strong:
+        return "medium"
+    if score > 0 and not strong:
+        # Amount-only / weak cue — low, and often abstain via insufficient_data.
+        return "low" if score >= 0.5 else "insufficient"
     if score > 0:
         return "low"
     return "insufficient"
+
+
+def _should_abstain(
+    top: dict[str, Any] | None,
+    *,
+    thin_remittance: bool,
+    band: ConfidenceBand,
+) -> bool:
+    if not top or band == "insufficient":
+        return True
+    reasons = {str(r) for r in (top.get("reasons") or [])}
+    strong = bool(reasons & {"invoice_id_in_reference", "po_in_reference"})
+    if thin_remittance and not strong:
+        return True
+    # Amount-only weak cue: abstain (insufficient) rather than rubber-stamp.
+    if not strong and float(top.get("score") or 0) < 0.7:
+        return True
+    return False
 
 
 def build_evidence_pack(
@@ -117,7 +178,7 @@ def build_evidence_pack(
             EvidenceItem(
                 source_id=f"EMAIL-STUB-{customer_id}",
                 source_type="email",
-                label="Email remittance thread (stub — ACL pending Week 5–6)",
+                label="Email remittance thread (stub — ACL pending)",
                 fields={
                     "subject": f"Payment advice for {payment_id}",
                     "snippet": "Stub: email retrieve gated on A3 / COPILOT_EMAIL_EVIDENCE",
@@ -133,7 +194,56 @@ def build_evidence_pack(
         payment_id=payment_id,
         items=items,
         email_enabled=email_on,
+        retriever_version=RETRIEVER_VERSION,
     )
+
+
+def _citations_from_evidence(
+    *,
+    evidence: EvidencePack,
+    payment_id: str,
+    top: dict[str, Any] | None,
+    claim_prefix: str,
+) -> list[Citation]:
+    """Build citation_map only from retrieved evidence source ids."""
+    by_id = {item.source_id: item for item in evidence.items}
+    citations: list[Citation] = []
+
+    def add(source_id: str, claim: str, span: str | None = None) -> None:
+        item = by_id.get(source_id)
+        if not item:
+            return
+        citations.append(
+            Citation(
+                source_id=source_id,
+                source_type=item.source_type,
+                span=span,
+                claim=claim,
+            )
+        )
+
+    add(payment_id, f"{claim_prefix}: payment under investigation", "amount/reference")
+    rem_id = f"REM-{payment_id}"
+    if rem_id in by_id:
+        text = str((by_id[rem_id].fields or {}).get("text") or "")
+        add(rem_id, f"{claim_prefix}: remittance reference", text[:80] or None)
+
+    if top:
+        inv_id = str(top["invoice_id"])
+        add(
+            inv_id,
+            f"{claim_prefix}: candidate invoice score={top.get('score')}",
+            "invoice_id/amount",
+        )
+        rule_id = f"RULE-{inv_id}"
+        reasons = top.get("reasons") or []
+        add(
+            rule_id,
+            f"{claim_prefix}: matching.py reasons",
+            ",".join(str(r) for r in reasons) or None,
+        )
+
+    return citations
 
 
 def _draft_hypothesis(
@@ -143,76 +253,76 @@ def _draft_hypothesis(
     customer_id: str | None,
     payment: dict[str, Any] | None,
     scored: dict[str, Any],
+    evidence: EvidencePack,
     rules_only: bool,
 ) -> MatchHypothesis:
     candidates = scored.get("candidates") or []
     top = candidates[0] if candidates else None
+    ref = str((payment or {}).get("reference") or "")
+    thin_remittance = bool(_THIN_REMITTANCE.search(ref)) if ref else True
+
+    band = _confidence_from_candidate(top, thin_remittance=thin_remittance)
+    abstain = _should_abstain(top, thin_remittance=thin_remittance, band=band)
+
     lines: list[MatchLine] = []
-    citations: list[Citation] = []
-
-    if payment:
-        citations.append(
-            Citation(
-                source_id=payment_id,
-                source_type="payment",
-                span="amount/reference",
-                claim="payment under investigation",
-            )
-        )
-        ref = str(payment.get("reference") or "")
-        if ref:
-            citations.append(
-                Citation(
-                    source_id=f"REM-{payment_id}",
-                    source_type="remittance",
-                    span=ref[:80],
-                    claim="remittance reference text",
-                )
-            )
-
-    if top:
+    if top and not abstain:
         inv_id = str(top["invoice_id"])
-        amount = float(
-            (payment or {}).get("amount")
-            or top.get("invoice_amount")
-            or 0
-        )
-        reasons = top.get("reasons") or []
+        # Prefer invoice amount when amount cue is weak / partial; else payment.
+        reasons = {str(r) for r in (top.get("reasons") or [])}
+        pay_amt = float((payment or {}).get("amount") or 0)
+        inv_amt = float(top.get("invoice_amount") or pay_amt or 0)
+        if "amount_within_tolerance" in reasons or "invoice_id_in_reference" in reasons:
+            amount = pay_amt or inv_amt
+        elif "possible_partial" in reasons:
+            amount = pay_amt or inv_amt
+        else:
+            amount = pay_amt or inv_amt
         lines.append(
             MatchLine(
                 invoice_id=inv_id,
                 amount=amount,
-                rationale="; ".join(str(r) for r in reasons) or "rule_score",
-            )
-        )
-        citations.append(
-            Citation(
-                source_id=inv_id,
-                source_type="invoice",
-                span="invoice_id/amount",
-                claim=f"candidate match score={top.get('score')}",
-            )
-        )
-        citations.append(
-            Citation(
-                source_id=f"RULE-{inv_id}",
-                source_type="rule_match",
-                span=",".join(str(r) for r in reasons),
-                claim="conventional matching.py reasons",
+                rationale="; ".join(str(r) for r in (top.get("reasons") or []))
+                or "rule_score",
             )
         )
 
-    band = _confidence_from_score(
-        float(top["score"]) if top else None,
-        bool(candidates),
+    claim_prefix = "abstain" if abstain else "match"
+    citations = _citations_from_evidence(
+        evidence=evidence,
+        payment_id=payment_id,
+        top=top if not abstain else None,
+        claim_prefix=claim_prefix,
     )
-    insufficient = band == "insufficient" or not lines
+    # Even on abstain, cite payment + remittance so the UI has clickable sources.
+    if abstain and not citations:
+        citations = _citations_from_evidence(
+            evidence=evidence,
+            payment_id=payment_id,
+            top=None,
+            claim_prefix="abstain",
+        )
+
+    if abstain:
+        band = "insufficient"
 
     model_id = MODEL_RULES if rules_only else MODEL_STUB
-    # Optional: if API key present and not rules_only, still use stub in CI —
-    # real LLM draft lands Weeks 5–6. Record intent when key exists.
-    if not rules_only and os.getenv("GOOGLE_API_KEY", "").strip():
-        model_id = os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite") + "+stub"
+    used_llm = False
+    if not rules_only and _llm_available():
+        model_id = os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite")
+        used_llm = True
+
+    raw_notes = (
+        "Abstain: thin or conflicting evidence; request more info or escalate"
+        if abstain
+        else (
+            f"Structured draft from matching.py → {top['invoice_id']} "
+            f"(score={top.get('score')}, reasons={top.get('reasons')})"
+            if top
+            else "Abstain: no rule candidates"
+        )
+    )
+    if used_llm:
+        raw_notes = f"{raw_notes} | llm_enrichment=available"
 
     return MatchHypothesis(
         case_id=case_id,
@@ -223,16 +333,47 @@ def _draft_hypothesis(
         confidence_band=band,
         model_id=model_id,
         prompt_version=PROMPT_VERSION,
-        insufficient_data=insufficient,
-        raw_notes=(
-            "Abstain: no rule candidates"
-            if insufficient
-            else f"Top candidate {top['invoice_id']} via matching.py"
-            if top
-            else None
-        ),
+        insufficient_data=abstain or not lines,
+        raw_notes=raw_notes,
         edited=False,
     )
+
+
+def _try_llm_summary(
+    *,
+    case_id: str,
+    hypothesis: MatchHypothesis,
+    scored: dict[str, Any],
+    evidence: EvidencePack,
+) -> str | None:
+    """Optional one-shot summary. Returns None on any failure (CI stays deterministic)."""
+    if not _llm_available():
+        return None
+    try:
+        # Lazy import — google-adk / genai may be absent in slim environments.
+        from google import genai  # type: ignore
+
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        client = genai.Client(api_key=api_key)
+        model = os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite")
+        payload = {
+            "case_id": case_id,
+            "hypothesis": hypothesis.model_dump(),
+            "candidates": (scored.get("candidates") or [])[:3],
+            "evidence_ids": [i.source_id for i in evidence.items],
+        }
+        prompt = (
+            "You are a cash-application copilot. In 2-3 sentences, summarize the "
+            "match investigation for an AR analyst. Cite source_ids from evidence_ids "
+            "only. If insufficient_data is true, say so clearly and do not invent invoices.\n"
+            f"DATA:\n{json.dumps(payload, default=str)[:4000]}"
+        )
+        resp = client.models.generate_content(model=model, contents=prompt)
+        text = getattr(resp, "text", None) or ""
+        text = str(text).strip()
+        return text[:1200] if text else None
+    except Exception:
+        return None
 
 
 def _draft_summary(
@@ -240,13 +381,15 @@ def _draft_summary(
     case_id: str,
     hypothesis: MatchHypothesis,
     scored: dict[str, Any],
+    evidence: EvidencePack,
     rules_only: bool,
 ) -> InvestigationSummary:
     cands = scored.get("candidates") or []
     if hypothesis.insufficient_data:
         text = (
             "Insufficient data to propose a confident cash-app match. "
-            "Request more remittance detail or escalate."
+            "Request more remittance detail or escalate. "
+            f"Cited sources: {[c.source_id for c in hypothesis.citation_map]}."
         )
     elif rules_only:
         top = cands[0]
@@ -256,12 +399,21 @@ def _draft_summary(
             "No generative summary (COPILOT_MODE=rules_only)."
         )
     else:
-        top = cands[0]
-        text = (
-            f"Investigation stub: payment aligns with {top['invoice_id']} "
-            f"on conventional signals {top.get('reasons')}. "
-            "Review citations before Accept / Edit & ready-to-apply."
+        llm_text = _try_llm_summary(
+            case_id=case_id,
+            hypothesis=hypothesis,
+            scored=scored,
+            evidence=evidence,
         )
+        if llm_text:
+            text = llm_text
+        else:
+            top = cands[0]
+            text = (
+                f"Structured investigation: payment aligns with {top['invoice_id']} "
+                f"on conventional signals {top.get('reasons')}. "
+                "Review clickable citations before Accept / Edit & ready-to-apply."
+            )
 
     return InvestigationSummary(
         case_id=case_id,
@@ -281,7 +433,7 @@ def investigate_case(
     customer_id: str | None,
     actor: str = "system",
 ) -> dict[str, Any]:
-    """Run bounded retrieve → rule score → draft hypothesis (+ optional stub summary)."""
+    """Run bounded retrieve → rule score → cited hypothesis (+ optional LLM summary)."""
     mode = copilot_mode()
     rules_only = mode == "rules_only"
 
@@ -320,30 +472,60 @@ def investigate_case(
         customer_id=customer_id,
         payment=payment,
         scored=scored,
+        evidence=evidence,
         rules_only=rules_only,
     )
     summary = _draft_summary(
         case_id=case_id,
         hypothesis=hypothesis,
         scored=scored,
+        evidence=evidence,
         rules_only=rules_only,
     )
 
-    case_store.set_hypothesis(case_id, hypothesis)
+    # Persist raw hypothesis separately so later edits do not erase the draft.
+    case_store.set_hypothesis(case_id, hypothesis, raw=True)
     case_store.set_summary(case_id, summary)
+
+    remittance_ids = [
+        i.source_id for i in evidence.items if i.source_type == "remittance"
+    ]
+    email_ids = [i.source_id for i in evidence.items if i.source_type == "email"]
+    invoice_ids = [
+        i.source_id for i in evidence.items if i.source_type == "invoice"
+    ]
+
     case_store.append_audit(
         case_id,
         "investigate",
         actor=actor,
         detail={
+            "case_id": case_id,
+            "customer_id": customer_id,
+            "payment_id": payment_id,
+            "invoice_ids": invoice_ids,
+            "remittance_ids": remittance_ids,
+            "email_ids": email_ids,
+            "retriever_version": evidence.retriever_version,
+            "model_id": hypothesis.model_id,
+            "prompt_version": hypothesis.prompt_version,
+            "confidence_band": hypothesis.confidence_band,
+            "citation_map": [c.model_dump() for c in hypothesis.citation_map],
+            "raw_hypothesis": hypothesis.model_dump(),
             "mode": mode,
             "rules_only": rules_only,
             "candidate_count": len(scored.get("candidates") or []),
             "recommendation": scored.get("recommendation"),
-            "confidence_band": hypothesis.confidence_band,
-            "model_id": hypothesis.model_id,
             "email_evidence": evidence.email_enabled,
+            "insufficient_data": hypothesis.insufficient_data,
         },
+    )
+
+    llm_skipped = (
+        rules_only
+        or _force_deterministic()
+        or not _llm_available()
+        or hypothesis.model_id in {MODEL_STUB, MODEL_RULES}
     )
 
     return {
@@ -359,6 +541,5 @@ def investigate_case(
         "hypothesis": hypothesis.model_dump(),
         "summary": summary.model_dump(),
         "needs_review": True,
-        "llm_skipped": rules_only or hypothesis.model_id in {MODEL_STUB, MODEL_RULES}
-        or "+stub" in str(hypothesis.model_id or ""),
+        "llm_skipped": llm_skipped,
     }

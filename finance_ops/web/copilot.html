@@ -45,8 +45,8 @@
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
     h2 { margin: 0 0 0.75rem; font-size: 1rem; }
     pre { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 0.75rem;
-          background: #0c1015; padding: 0.75rem; border-radius: 6px; max-height: 240px; overflow: auto; }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+          background: #0c1015; padding: 0.75rem; border-radius: 6px; max-height: 280px; overflow: auto; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     button {
       border: 0; border-radius: 6px; padding: 0.45rem 0.75rem; cursor: pointer;
       background: var(--accent); color: #fff; font-weight: 600; font-size: 0.85rem;
@@ -54,10 +54,31 @@
     button.secondary { background: #2a3542; }
     button.danger { background: var(--danger); }
     button.warn { background: var(--warn); color: #1a1200; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
     input, select { background: #0c1015; color: var(--ink); border: 1px solid var(--line);
-                    border-radius: 6px; padding: 0.4rem 0.55rem; }
+                    border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.85rem; }
     .banner { background: #243044; border: 1px solid var(--accent); padding: 0.6rem 0.8rem;
               border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem; }
+    .banner.warn { background: #3a2e14; border-color: var(--warn); color: #ffe6a8; }
+    .banner.danger { background: #3a1a1e; border-color: var(--danger); color: #ffc9cd; }
+    .cite {
+      display: inline-block; margin: 0.2rem 0.35rem 0.2rem 0;
+      padding: 0.25rem 0.55rem; border-radius: 6px; border: 1px solid var(--line);
+      background: #0c1015; color: var(--accent); font-family: var(--mono); font-size: 0.75rem;
+      cursor: pointer; text-decoration: none;
+    }
+    .cite:hover { border-color: var(--accent); }
+    .ev-item {
+      border: 1px solid var(--line); border-radius: 8px; padding: 0.65rem 0.75rem;
+      margin-bottom: 0.5rem; background: #0c1015; scroll-margin-top: 1rem;
+    }
+    .ev-item.flash { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+    .ev-item .label { font-weight: 600; font-size: 0.85rem; }
+    .ev-item .sid { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+    .reason-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; align-items: center; }
+    .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px;
+            font-size: 0.72rem; background: #243044; color: var(--muted); }
+    .pill.insuff { background: #3a2e14; color: #ffe6a8; }
   </style>
 </head>
 <body>
@@ -79,7 +100,29 @@
   </main>
   <script>
     let selected = null;
+    let evidenceById = {};
     const $ = (id) => document.getElementById(id);
+
+    const REASON_CODES = {
+      reject: [
+        ["reject_wrong_customer", "Wrong customer"],
+        ["reject_duplicate", "Duplicate"],
+        ["reject_not_our_payment", "Not our payment"],
+        ["reject_other", "Other"],
+      ],
+      escalate: [
+        ["escalate_materiality", "Materiality"],
+        ["escalate_ambiguous", "Ambiguous"],
+        ["escalate_policy", "Policy"],
+        ["escalate_other", "Other"],
+      ],
+      need_info: [
+        ["need_info_remittance", "Need remittance"],
+        ["need_info_email", "Need email"],
+        ["need_info_invoice", "Need invoice"],
+        ["need_info_other", "Other"],
+      ],
+    };
 
     async function api(path, opts = {}) {
       const res = await fetch(path, {
@@ -87,8 +130,55 @@
         ...opts,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail?.error || data.detail || res.statusText);
+      if (!res.ok) {
+        const err = data.detail?.error || data.detail || data.error || res.statusText;
+        throw new Error(typeof err === "string" ? err : JSON.stringify(err));
+      }
       return data;
+    }
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      })[c]);
+    }
+
+    function jumpToEvidence(sourceId) {
+      const el = document.getElementById(`ev-${CSS.escape(sourceId)}`);
+      if (!el) {
+        alert(`Evidence source not found: ${sourceId}`);
+        return;
+      }
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("flash");
+      setTimeout(() => el.classList.remove("flash"), 1200);
+    }
+
+    function renderCitations(cites) {
+      if (!cites?.length) return `<span class="muted">No citations</span>`;
+      return cites.map((c) =>
+        `<a class="cite" href="#ev-${esc(c.source_id)}" data-sid="${esc(c.source_id)}" title="${esc(c.claim || c.span || "")}">${esc(c.source_type)}:${esc(c.source_id)}</a>`
+      ).join("");
+    }
+
+    function renderEvidence(items) {
+      evidenceById = {};
+      if (!items?.length) return `<p class="muted">No evidence yet — run Investigate.</p>`;
+      return items.map((it) => {
+        evidenceById[it.source_id] = it;
+        return `<div class="ev-item" id="ev-${esc(it.source_id)}">
+          <div class="label">${esc(it.label)}${it.stub ? ' <span class="pill">stub</span>' : ""}</div>
+          <div class="sid">${esc(it.source_type)} · ${esc(it.source_id)}</div>
+          <pre>${esc(JSON.stringify(it.fields || {}, null, 2))}</pre>
+        </div>`;
+      }).join("");
+    }
+
+    function reasonSelect(kind) {
+      const opts = (REASON_CODES[kind] || []).map(
+        ([v, label]) => `<option value="${v}">${label}</option>`
+      ).join("");
+      return `<select id="reason-${kind}">${opts}</select>`;
     }
 
     async function refreshStatus() {
@@ -108,9 +198,9 @@
       for (const c of q.cases) {
         const el = document.createElement("div");
         el.className = "row" + (selected === c.case_id ? " active" : "");
-        el.innerHTML = `<div class="id">${c.case_id}</div>
-          <div class="amt">${c.currency || "USD"} ${c.amount ?? "—"} · ${c.status}</div>
-          <div class="muted">${c.payment_id || ""} · aging ${c.aging_days ?? "?"}d · score ${c.match_score ?? "—"}</div>`;
+        el.innerHTML = `<div class="id">${esc(c.case_id)}</div>
+          <div class="amt">${esc(c.currency || "USD")} ${esc(c.amount ?? "—")} · ${esc(c.status)}</div>
+          <div class="muted">${esc(c.payment_id || "")} · aging ${esc(c.aging_days ?? "?")}d · score ${esc(c.match_score ?? "—")}</div>`;
         el.onclick = () => openCase(c.case_id);
         root.appendChild(el);
       }
@@ -125,42 +215,105 @@
         api(`/v1/copilot/cases/${caseId}/audit`),
       ]);
       const caseObj = c.case;
+      const hyp = caseObj.hypothesis || {};
+      const insufficient = !!hyp.insufficient_data || hyp.confidence_band === "insufficient";
+      const guidance = caseObj.guidance;
+
+      const insuffBanner = insufficient
+        ? `<div class="banner warn" id="insuffBanner"><strong>Insufficient data</strong> — confident Accept is blocked. Use Need info, Escalate, or Edit lines after reviewing citations.</div>`
+        : "";
+
       $("detail").innerHTML = `
         <div class="panel">
-          <h2>${caseObj.case_id} · ${caseObj.status}</h2>
-          <p class="muted">${caseObj.payment_id} · ${caseObj.customer_id} · ${caseObj.currency} ${caseObj.amount}</p>
+          <h2>${esc(caseObj.case_id)} · ${esc(caseObj.status)}
+            ${insufficient ? '<span class="pill insuff">insufficient</span>' : ""}
+            ${hyp.confidence_band ? `<span class="pill">${esc(hyp.confidence_band)}</span>` : ""}
+          </h2>
+          <p class="muted">${esc(caseObj.payment_id)} · ${esc(caseObj.customer_id)} · ${esc(caseObj.currency)} ${esc(caseObj.amount)}</p>
+          ${insuffBanner}
           <div class="actions">
             <button type="button" id="btnInv">Investigate</button>
-            <button type="button" class="secondary" id="btnAccept">Accept</button>
+            <button type="button" class="secondary" id="btnAccept" ${insufficient ? "disabled" : ""}>Accept</button>
             <button type="button" class="secondary" id="btnEdit">Edit & ready</button>
-            <button type="button" class="danger" id="btnReject">Reject</button>
-            <button type="button" class="warn" id="btnEsc">Escalate</button>
-            <button type="button" class="warn" id="btnNeed">Need info</button>
           </div>
+          <div class="reason-row">
+            <button type="button" class="danger" id="btnReject">Reject</button>
+            ${reasonSelect("reject")}
+            <button type="button" class="warn" id="btnEsc">Escalate</button>
+            ${reasonSelect("escalate")}
+            <button type="button" class="warn" id="btnNeed">Need info</button>
+            ${reasonSelect("need_info")}
+          </div>
+          ${caseObj.reason_code ? `<p class="muted" style="margin-top:0.75rem">Last reason: <code>${esc(caseObj.reason_code)}</code> · decision ${esc(caseObj.last_decision || "—")}</p>` : ""}
         </div>
-        <div class="panel"><h2>Hypothesis</h2><pre id="hypPre">${JSON.stringify(caseObj.hypothesis || {}, null, 2)}</pre></div>
-        <div class="panel"><h2>Evidence (${e.evidence?.items?.length || 0})</h2><pre>${JSON.stringify(e.evidence, null, 2)}</pre></div>
-        <div class="panel"><h2>Audit</h2><pre>${JSON.stringify(a.audit || [], null, 2)}</pre></div>
+        <div class="panel">
+          <h2>Hypothesis</h2>
+          <div style="margin-bottom:0.5rem">${renderCitations(hyp.citation_map)}</div>
+          <pre id="hypPre">${esc(JSON.stringify(hyp, null, 2))}</pre>
+          ${caseObj.summary ? `<p class="muted" style="margin-top:0.5rem">${esc(caseObj.summary.summary || "")}</p>` : ""}
+        </div>
+        <div class="panel">
+          <h2>ApplyGuidancePacket</h2>
+          ${guidance
+            ? `<pre id="guidancePre">${esc(JSON.stringify(guidance, null, 2))}</pre>
+               <p class="muted">Copy text</p>
+               <pre>${esc(guidance.copy_text || "")}</pre>`
+            : `<p class="muted">No guidance yet — Accept or Edit &amp; ready emits the packet.</p>`}
+        </div>
+        <div class="panel">
+          <h2>Evidence (${e.evidence?.items?.length || 0})</h2>
+          <div id="evidenceList">${renderEvidence(e.evidence?.items || [])}</div>
+        </div>
+        <div class="panel">
+          <h2>Audit</h2>
+          <p class="muted">actor ${esc(a.decision_actor || "—")} · at ${esc(a.decision_at || "—")} · confidence ${esc(a.confidence_band || "—")}</p>
+          <pre>${esc(JSON.stringify({
+            last_decision: a.last_decision,
+            reason_code: a.reason_code,
+            raw_hypothesis: a.raw_hypothesis,
+            hypothesis: a.hypothesis,
+            citation_map: a.citation_map,
+            audit: a.audit,
+          }, null, 2))}</pre>
+        </div>
       `;
+
+      $("detail").querySelectorAll("a.cite").forEach((el) => {
+        el.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          jumpToEvidence(el.getAttribute("data-sid"));
+        });
+      });
+
       $("btnInv").onclick = async () => {
         const out = await api(`/v1/copilot/cases/${caseId}/investigate`, { method: "POST", body: "{}" });
         $("hypPre").textContent = JSON.stringify(out.hypothesis, null, 2);
         await openCase(caseId);
       };
+
       const decide = async (decision, reason_code = null) => {
-        const body = { decision, actor: "workbench", reason_code };
-        const out = await api(`/v1/copilot/cases/${caseId}/decision`, {
-          method: "POST", body: JSON.stringify(body),
-        });
-        alert(JSON.stringify(out, null, 2));
-        await openCase(caseId);
-        await loadQueue(false);
+        try {
+          const body = { decision, actor: "workbench", reason_code };
+          const out = await api(`/v1/copilot/cases/${caseId}/decision`, {
+            method: "POST", body: JSON.stringify(body),
+          });
+          if (out.guidance) {
+            alert("Guidance packet ready — see ApplyGuidancePacket panel.");
+          } else if (out.error) {
+            alert(out.error);
+          }
+          await openCase(caseId);
+          await loadQueue(false);
+        } catch (err) {
+          alert(String(err.message || err));
+        }
       };
+
       $("btnAccept").onclick = () => decide("accept");
       $("btnEdit").onclick = () => decide("edit_ready_to_apply");
-      $("btnReject").onclick = () => decide("reject", "reject_other");
-      $("btnEsc").onclick = () => decide("escalate", "escalate_ambiguous");
-      $("btnNeed").onclick = () => decide("need_info", "need_info_remittance");
+      $("btnReject").onclick = () => decide("reject", $("reason-reject").value);
+      $("btnEsc").onclick = () => decide("escalate", $("reason-escalate").value);
+      $("btnNeed").onclick = () => decide("need_info", $("reason-need_info").value);
     }
 
     $("btnSync").onclick = async () => { await loadQueue(true); };
