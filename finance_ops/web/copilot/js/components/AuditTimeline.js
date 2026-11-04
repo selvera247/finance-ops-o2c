@@ -3,7 +3,7 @@
  * @module components/AuditTimeline
  */
 
-import { Component, el, esc, setChildren } from "../utils.js";
+import { Component, el, formatJsonForDisplay, setChildren } from "../utils.js";
 import { Skeleton } from "./shared.js";
 
 /**
@@ -89,11 +89,10 @@ export class AuditTimeline extends Component {
             `${ev.event || "event"}${ev.actor ? ` · ${ev.actor}` : ""}`,
           ),
           ev.detail && Object.keys(ev.detail).length
-            ? el(
-                "pre",
-                { className: "cp-audit__detail" },
-                esc(JSON.stringify(ev.detail, null, 2)),
-              )
+            ? el("pre", {
+                className: "cp-audit__detail",
+                text: formatJsonForDisplay(ev.detail),
+              })
             : null,
         ),
       ),

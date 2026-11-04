@@ -1,9 +1,17 @@
 /**
  * ApplyGuidancePacket display — guidance-only happy path.
+ * Summary fields first; raw packet JSON behind a Details toggle.
  * @module components/GuidancePacketView
  */
 
-import { Component, el, esc, setChildren } from "../utils.js";
+import {
+  Component,
+  el,
+  guidanceSummaryFields,
+  jsonDetailsBlock,
+  renderSummaryList,
+  setChildren,
+} from "../utils.js";
 import { Banner, Button } from "./shared.js";
 
 /**
@@ -80,6 +88,12 @@ export class GuidancePacketView extends Component {
         : "Copy into current ERP. AI did not post cash.",
     }).render();
 
+    const summary = renderSummaryList(
+      guidanceSummaryFields(/** @type {Record<string, unknown>} */ (g)),
+      "cp-summary cp-guidance__summary",
+    );
+    if (summary) root.append(summary);
+
     if (g.copy_text) {
       root.append(el("h3", { className: "copilot-muted" }, "Copy text"));
       root.append(el("pre", { className: "cp-guidance__copy" }, g.copy_text));
@@ -106,9 +120,11 @@ export class GuidancePacketView extends Component {
       );
     }
 
-    root.append(el("h3", { className: "copilot-muted" }, "Packet JSON"));
     root.append(
-      el("pre", { className: "cp-guidance__json" }, esc(JSON.stringify(g, null, 2))),
+      jsonDetailsBlock(g, {
+        className: "cp-guidance__details",
+        buttonLabel: "Details",
+      }),
     );
 
     setChildren(this.root, root);
