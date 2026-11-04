@@ -21,7 +21,7 @@ uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/v1/copilot/status` | Mode flags |
-| GET | `/v1/copilot/queue` | Ranked cases (`?sync=true` materializes warehouse; auto-seeds Spike A when DuckDB has no unmatched payments — Cloud Run cold start) |
+| GET | `/v1/copilot/queue` | Ranked cases (`?sync=true` materializes warehouse; auto-seeds demo pack `base+spike_a` when DuckDB is empty/incomplete — Cloud Run cold start) |
 | GET | `/v1/copilot/digest` | Optional ranked digest (`?force=1` dry-run; off by default) |
 | GET | `/v1/copilot/cases/{id}` | Case detail + overlay hypothesis |
 | GET | `/v1/copilot/cases/{id}/evidence` | Evidence pack (`?actor=` for email ACL) |

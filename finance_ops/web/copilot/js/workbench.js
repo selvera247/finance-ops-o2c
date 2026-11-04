@@ -5,7 +5,7 @@
  * @module workbench
  */
 
-import { CopilotApi } from "./api.js";
+import { CopilotApi, normalizeApiToken } from "./api.js";
 import {
   ActionBar,
   AuditTimeline,
@@ -342,9 +342,10 @@ export class CopilotWorkbench {
 
       const syncMeta = q.sync || null;
       if (sync && syncMeta) {
+        const pack = syncMeta.seed?.pack;
         const seeded =
           syncMeta.seed?.seeded || syncMeta.seed?.status === "success"
-            ? " · seeded Spike A"
+            ? ` · seeded ${pack || "demo"}`
             : "";
         if (syncMeta.status === "throttled") {
           this.syncStatusText = `Sync throttled — retry in ${syncMeta.retry_after_sec || "?"}s`;
@@ -637,7 +638,10 @@ function main() {
     actor: params.get("actor") || "workbench",
     showDigest: params.get("digest") === "1",
     api: new CopilotApi({
-      token: params.get("token") || window.localStorage.getItem("FINANCE_OPS_API_TOKEN"),
+      token: normalizeApiToken(
+        params.get("token") ||
+          window.localStorage.getItem("FINANCE_OPS_API_TOKEN"),
+      ),
     }),
   });
 }

@@ -1,4 +1,4 @@
-"""Cold warehouse Sync must auto-seed Spike A so cash_app queue populates."""
+"""Cold warehouse Sync must auto-seed the demo pack (base + Spike A)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from finance_ops.copilot import service as copilot
+from finance_ops.copilot import seed as demo_seed
 from finance_ops.serving import app
 
 
@@ -20,6 +21,7 @@ def empty_warehouse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("FINANCE_OPS_DATA_MODE", "warehouse")
     monkeypatch.setenv("COPILOT_MODE", "workbench")
     monkeypatch.setenv("COPILOT_AUTO_SEED", "1")
+    monkeypatch.setenv("COPILOT_DEMO_SEED_PACK", "base+spike_a")
     monkeypatch.setenv("COPILOT_SYNC_MIN_INTERVAL_SEC", "0")
     monkeypatch.delenv("K_SERVICE", raising=False)
     monkeypatch.delenv("FINANCE_OPS_API_TOKEN", raising=False)
@@ -30,19 +32,44 @@ def empty_warehouse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return duck
 
 
-def test_ensure_queue_seeds_empty_warehouse(empty_warehouse: Path) -> None:
+def _payment_ids(queue: dict) -> set[str]:
+    return {str(c.get("payment_id") or "") for c in queue.get("cases") or []}
+
+
+def test_ensure_queue_seeds_base_and_spike_a(empty_warehouse: Path) -> None:
     sync = copilot.ensure_queue(sync=True, force=True)
     assert sync.get("status") == "success"
-    assert sync.get("seed", {}).get("status") == "success"
-    assert sync.get("seed", {}).get("seeded") is True
+    seed = sync.get("seed") or {}
+    assert seed.get("status") == "success"
+    assert seed.get("seeded") is True
+    assert seed.get("pack") == "base+spike_a"
     assert int(sync.get("payment_count") or 0) >= 1
-    assert int(sync.get("synced_count") or 0) >= 1
     assert empty_warehouse.exists()
 
     queue = copilot.list_queue(lane="cash_app", sync_first=False, limit=50)
-    assert queue["count"] >= 1
-    assert any(str(c["case_id"]).startswith("EXE-cash_app-") for c in queue["cases"])
-    assert any(c.get("payment_id") == "PAY-1001" for c in queue["cases"])
+    ids = _payment_ids(queue)
+    # Prior workbench dataset: bootstrap PAY-900x + Spike A PAY-1001…
+    assert "PAY-9002" in ids
+    assert "PAY-9003" in ids
+    assert "PAY-1001" in ids
+
+
+def test_spike_a_only_warehouse_upgrades_to_include_base(
+    empty_warehouse: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Simulate the first Sync fix that seeded Spike A alone.
+    demo_seed.load_spike_a(replace_customers=False)
+    assert demo_seed.warehouse_has_payment("PAY-1001")
+    assert not demo_seed.warehouse_has_payment("PAY-9002")
+
+    monkeypatch.setattr(copilot, "_LAST_SYNC_MONO", 0.0)
+    sync = copilot.ensure_queue(sync=True, force=True)
+    assert sync.get("seed", {}).get("status") == "success"
+    queue = copilot.list_queue(lane="cash_app", sync_first=False, limit=50)
+    ids = _payment_ids(queue)
+    assert "PAY-9002" in ids
+    assert "PAY-9003" in ids
+    assert "PAY-1001" in ids
 
 
 def test_auto_seed_can_be_disabled(
@@ -63,8 +90,8 @@ def test_queue_api_sync_populates_cash_app(empty_warehouse: Path) -> None:
     res = client.get("/v1/copilot/queue", params={"sync": "true", "lane": "cash_app"})
     assert res.status_code == 200
     body = res.json()
-    assert body.get("count", 0) >= 1
-    assert any(str(c["case_id"]).startswith("EXE-cash_app-") for c in body["cases"])
+    ids = _payment_ids(body)
+    assert "PAY-9003" in ids
+    assert "PAY-1001" in ids
     sync_meta = body.get("sync") or {}
-    assert int(sync_meta.get("payment_count") or 0) >= 1
-    assert sync_meta.get("seed", {}).get("status") == "success"
+    assert sync_meta.get("seed", {}).get("pack") == "base+spike_a"
