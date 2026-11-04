@@ -1,9 +1,17 @@
 /**
  * Evidence pane — items grouped by source type, citation jump targets.
+ * Human-readable summary first; raw JSON behind a Details toggle.
  * @module components/EvidencePane
  */
 
-import { Component, el, esc, setChildren } from "../utils.js";
+import {
+  Component,
+  el,
+  evidenceSummaryFields,
+  jsonDetailsBlock,
+  renderSummaryList,
+  setChildren,
+} from "../utils.js";
 import { Skeleton, StatusPill } from "./shared.js";
 
 const SOURCE_ORDER = ["payment", "remittance", "invoice", "rule_match", "email"];
@@ -56,7 +64,7 @@ export class EvidencePane extends Component {
         "aria-label": `${label} loading`,
       });
       setChildren(this.root, host);
-      new Skeleton(host, { rows: 3, block: true }).render();
+      new Skeleton(host, { rows: 3, pulse: true }).render();
       return;
     }
 
@@ -135,6 +143,7 @@ export class EvidencePane extends Component {
       });
       group.append(el("h3", { className: "cp-evidence__group-title" }, key));
       for (const it of groups.get(key)) {
+        const fields = it.fields || {};
         const itemEl = el(
           "article",
           {
@@ -157,12 +166,16 @@ export class EvidencePane extends Component {
           itemEl.append(pillHost);
           new StatusPill(pillHost, { status: "stub", ariaLabel: "Stub evidence" }).render();
         }
+        const summary = renderSummaryList(
+          evidenceSummaryFields(it.source_type, fields, it.source_id),
+          "cp-summary cp-evidence__summary",
+        );
+        if (summary) itemEl.append(summary);
         itemEl.append(
-          el(
-            "pre",
-            { className: "cp-evidence__fields" },
-            esc(JSON.stringify(it.fields || {}, null, 2)),
-          ),
+          jsonDetailsBlock(fields, {
+            className: "cp-evidence__details",
+            buttonLabel: "Details",
+          }),
         );
         itemEl.addEventListener("focus", () => p.onItemFocus?.(it.source_id));
         group.append(itemEl);

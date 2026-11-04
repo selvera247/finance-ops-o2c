@@ -188,7 +188,7 @@ function mountEvidence(root) {
   const grid = section(
     root,
     "EvidencePane",
-    "Grouped by source type; citation targets use #ev-{source_id}.",
+    "Labeled summary fields first; raw JSON behind a collapsed Details toggle. Citation targets use #ev-{source_id}.",
   );
   const empty = card(grid, "empty");
   new EvidencePane(empty, { items: [] }).render();
@@ -250,7 +250,11 @@ function mountActions(root) {
 }
 
 function mountGuidance(root) {
-  const grid = section(root, "GuidancePacketView", "Guidance-only packet after Accept / Edit & ready.");
+  const grid = section(
+    root,
+    "GuidancePacketView",
+    "Guidance-only packet after Accept / Edit & ready — summary fields first, packet JSON in Details.",
+  );
   const empty = card(grid, "empty");
   new GuidancePacketView(empty, { guidance: null }).render();
   const ready = card(grid, "packet ready");

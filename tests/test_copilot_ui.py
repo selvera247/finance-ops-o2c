@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,10 @@ from fastapi.testclient import TestClient
 
 from finance_ops.serving import app
 
-UI_ROOT = Path(__file__).resolve().parents[1] / "finance_ops" / "web" / "copilot"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+UI_ROOT = REPO_ROOT / "finance_ops" / "web" / "copilot"
 COMPONENTS = UI_ROOT / "js" / "components"
+JS_TESTS = REPO_ROOT / "tests" / "js"
 
 
 @pytest.fixture()
@@ -99,6 +102,9 @@ def test_design_tokens_define_copilot_vars() -> None:
                 '"thin"',
                 "Thin evidence",
                 "aria-label",
+                "evidenceSummaryFields",
+                "jsonDetailsBlock",
+                "cp-evidence__summary",
             ],
         ),
         (
@@ -125,7 +131,13 @@ def test_design_tokens_define_copilot_vars() -> None:
         ),
         (
             "GuidancePacketView.js",
-            ["Guidance only", "ApplyGuidancePacket", '"data-state": "empty"'],
+            [
+                "Guidance only",
+                "ApplyGuidancePacket",
+                '"data-state": "empty"',
+                "guidanceSummaryFields",
+                "jsonDetailsBlock",
+            ],
         ),
         (
             "AuditTimeline.js",
@@ -243,3 +255,38 @@ def test_no_implicit_api_globals_in_components() -> None:
             continue
         src = path.read_text(encoding="utf-8")
         assert not pattern.search(src), f"{path.name} should not call fetch()"
+
+
+def test_json_display_helpers_avoid_esc_for_text_nodes() -> None:
+    """Evidence / guidance must not HTML-escape JSON destined for textContent."""
+    utils = (UI_ROOT / "js" / "utils.js").read_text(encoding="utf-8")
+    assert "formatJsonForDisplay" in utils
+    assert "jsonDetailsBlock" in utils
+    assert 'aria-expanded' in utils
+    for name in ("EvidencePane.js", "GuidancePacketView.js", "AuditTimeline.js"):
+        src = (COMPONENTS / name).read_text(encoding="utf-8")
+        assert "esc(JSON.stringify" not in src, f"{name} still double-escapes JSON"
+
+
+def test_examples_describe_summary_first_evidence() -> None:
+    src = (UI_ROOT / "js" / "examples.js").read_text(encoding="utf-8")
+    assert "Labeled summary fields first" in src
+    assert "Details" in src
+    fixtures = (UI_ROOT / "js" / "fixtures.js").read_text(encoding="utf-8")
+    assert 'source_type: "email"' in fixtures
+    assert "po_number" in fixtures
+
+
+def test_evidence_display_dom_smoke() -> None:
+    """Node DOM smoke: no &quot;, summary visible, Details collapsed by default."""
+    script = JS_TESTS / "evidence_display.test.mjs"
+    assert script.is_file()
+    proc = subprocess.run(
+        ["node", str(script)],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "ok" in proc.stdout
