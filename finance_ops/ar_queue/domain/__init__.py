@@ -10,10 +10,18 @@ from finance_ops.ar_queue.domain.portal_classify import (
     classify_portal_row,
 )
 from finance_ops.ar_queue.domain.skus import SKUS, list_skus, sku_for_lane
-from finance_ops.ar_queue.domain.statuses import OPEN_STATUSES, TERMINAL_STATUSES
+from finance_ops.ar_queue.domain.statuses import (
+    COPILOT_QUEUE_STATUSES,
+    OPEN_STATUSES,
+    PROTECTED_FROM_RESYNC,
+    TERMINAL_STATUSES,
+    status_for_decision,
+)
 
 __all__ = [
+    "COPILOT_QUEUE_STATUSES",
     "OPEN_STATUSES",
+    "PROTECTED_FROM_RESYNC",
     "TERMINAL_STATUSES",
     "SPIKE_B_WALKTHROUGH",
     "SKUS",
@@ -24,4 +32,5 @@ __all__ = [
     "score_against_invoices",
     "score_payments_batch_cpu",
     "sku_for_lane",
+    "status_for_decision",
 ]

@@ -65,7 +65,12 @@ def suggest_payment_match(payment_id: str) -> dict[str, Any]:
 
 
 def apply_payment_match(payment_id: str, invoice_id: str) -> dict[str, Any]:
-    """Apply a match immediately (prefer request_cash_app_approval + HITL in demos)."""
+    """Apply a match in the warehouse (legacy / Slack-contrast path).
+
+    Copilot MVP happy path must NOT call this — it emits ApplyGuidancePacket.
+    Demo quarantine: FINANCE_OPS_DEMO_APPLY=1 may apply via copilot.service only.
+    Prefer request_cash_app_approval + HITL for Slack-contrast demos.
+    """
     try:
         _guard("apply_payment_match")
     except CircuitOpenError as exc:

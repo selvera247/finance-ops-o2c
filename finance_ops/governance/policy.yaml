@@ -1,11 +1,16 @@
 # Approval policy-as-code (D2). Override path via FINANCE_OPS_POLICY_PATH.
 # Env overrides (optional): FINANCE_OPS_POLICY_AUTO_ALLOW_MAX,
 # FINANCE_OPS_POLICY_REQUIRE_HUMAN_ABOVE, FINANCE_OPS_POLICY_DENY_ABOVE.
+#
+# Copilot MVP: keep auto_allow_max at 0. The Copilot decision path never
+# auto-applies; it emits ApplyGuidancePacket only. Warehouse apply is
+# quarantined behind FINANCE_OPS_DEMO_APPLY=1 (explicit demo flag).
 
 version: 1
 
 thresholds:
   # Amounts at or below this may auto-allow when the action permits (USD).
+  # MUST stay 0 for Copilot MVP — silent money movement is an anti-goal.
   auto_allow_max: 0
   # Amounts above this always require a human (even if action defaults to allow).
   require_human_above: 0

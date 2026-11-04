@@ -7,7 +7,11 @@ from datetime import datetime
 from typing import Any
 
 from finance_ops.ar_queue.domain.skus import sku_for_lane
-from finance_ops.ar_queue.domain.statuses import OPEN_STATUSES
+from finance_ops.ar_queue.domain.statuses import (
+    OPEN_STATUSES,
+    PROTECTED_FROM_RESYNC,
+    TERMINAL_STATUSES,
+)
 
 
 def _row_params(row: dict[str, Any], *, opened_at: Any, now: datetime) -> list[Any]:
@@ -155,7 +159,9 @@ class WarehouseExceptionStore:
         params: list[Any] = []
         if status:
             if status == "open":
-                sql += " AND status IN ('open','pending_hitl','escalated')"
+                placeholders = ",".join("?" * len(OPEN_STATUSES))
+                sql += f" AND status IN ({placeholders})"
+                params.extend(sorted(OPEN_STATUSES))
             else:
                 sql += " AND status = ?"
                 params.append(status)
@@ -213,12 +219,13 @@ def preserve_terminal_status(
     row: dict[str, Any],
     prev: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Do not reopen resolved/rejected exceptions on sync."""
+    """Do not reopen terminal or Copilot in-progress statuses on sync."""
     if not prev:
         return row
-    if str(prev.get("status")) in {"resolved", "rejected"}:
-        if row.get("status") in OPEN_STATUSES:
-            return {**row, "status": prev["status"]}
+    prev_status = str(prev.get("status") or "")
+    if prev_status in PROTECTED_FROM_RESYNC or prev_status in TERMINAL_STATUSES:
+        if row.get("status") in OPEN_STATUSES or row.get("status") == "open":
+            return {**row, "status": prev_status}
     return row
 
 

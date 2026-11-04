@@ -20,10 +20,22 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadF
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="finance_ops", version="0.7.0")
+app = FastAPI(
+    title="finance_ops",
+    version="0.8.0",
+    description=(
+        "Cash-Application Exception Copilot MVP (guidance-only apply) plus "
+        "legacy AR queue / free wedges. Copilot routes under /v1/copilot/*."
+    ),
+)
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 _LEAKAGE_PAGE = _WEB_DIR / "leakage.html"
+_COPILOT_PAGE = _WEB_DIR / "copilot.html"
+
+from finance_ops.copilot.router import router as copilot_router  # noqa: E402
+
+app.include_router(copilot_router)
 
 
 def _bearer_or_header_token(
@@ -163,15 +175,43 @@ def leakage_self_serve() -> FileResponse:
     )
 
 
+@app.get("/copilot")
+def copilot_workbench() -> FileResponse:
+    """Thin Copilot workbench — queue + case detail + actions (MVP shell)."""
+    if not _COPILOT_PAGE.is_file():
+        raise HTTPException(status_code=404, detail="copilot page missing")
+    return FileResponse(
+        _COPILOT_PAGE,
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
+    from finance_ops.copilot.config import (
+        copilot_email_evidence_enabled,
+        copilot_mode,
+        demo_apply_enabled,
+        prototype_mode_label,
+    )
+
     return {
         "status": "ok",
         "service": "finance_ops",
+        "product_north_star": "cash_application_exception_copilot",
         "model": os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite"),
         "data_mode": os.getenv("FINANCE_OPS_DATA_MODE", "warehouse"),
         "auth": write_auth_status(),
-        "self_serve": {"leakage": "/leakage"},
+        "self_serve": {"leakage": "/leakage", "copilot": "/copilot"},
+        "copilot": {
+            "mode": copilot_mode(),
+            "prototype_mode": prototype_mode_label(),
+            "email_evidence": copilot_email_evidence_enabled(),
+            "demo_apply": demo_apply_enabled(),
+            "docs": "/docs",
+            "queue": "/v1/copilot/queue",
+        },
     }
 
 
