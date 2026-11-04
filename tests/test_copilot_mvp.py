@@ -30,7 +30,7 @@ def spike_ready(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     )
     ingest_batch(run_id="copilot-mvp-batch")
     load_spike_a(replace_customers=True)
-    sync = copilot.ensure_queue(sync=True)
+    sync = copilot.ensure_queue(sync=True, force=True)
     assert sync.get("synced_count", 0) >= 1
     return copilot.case_id_for_payment("PAY-1001")
 

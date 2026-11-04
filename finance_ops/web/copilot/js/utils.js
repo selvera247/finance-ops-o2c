@@ -111,6 +111,20 @@ export function el(tag, attrs = {}, ...children) {
 }
 
 /**
+ * Shallow equality for skip-render (functions compared by reference).
+ * @param {Record<string, unknown>} a
+ * @param {Record<string, unknown>} b
+ */
+export function shallowEqualProps(a, b) {
+  if (a === b) return true;
+  const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+  for (const k of keys) {
+    if ((a || {})[k] !== (b || {})[k]) return false;
+  }
+  return true;
+}
+
+/**
  * Stable component base: holds props, re-renders into a root.
  */
 export class Component {
@@ -127,9 +141,14 @@ export class Component {
 
   /**
    * @param {Record<string, unknown>} [next]
+   * @param {{ force?: boolean }} [opts]
    */
-  update(next = {}) {
-    this.props = { ...this.props, ...next };
+  update(next = {}, opts = {}) {
+    const merged = { ...this.props, ...next };
+    if (!opts.force && shallowEqualProps(this.props, merged)) {
+      return;
+    }
+    this.props = merged;
     this.render();
   }
 
@@ -137,6 +156,21 @@ export class Component {
   render() {
     throw new Error("render() not implemented");
   }
+}
+
+/**
+ * @param {() => void} fn
+ * @param {number} ms
+ */
+export function debounce(fn, ms) {
+  let t = 0;
+  return (...args) => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => {
+      t = 0;
+      fn(...args);
+    }, ms);
+  };
 }
 
 /**

@@ -37,7 +37,7 @@ def spike_ready(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     db.init_schema()
     db.execute("DELETE FROM ar_exceptions WHERE lane = 'cash_app'")
-    sync = copilot.ensure_queue(sync=True)
+    sync = copilot.ensure_queue(sync=True, force=True)
     assert sync.get("synced_count", 0) >= 1
 
 

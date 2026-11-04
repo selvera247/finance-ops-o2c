@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from finance_ops.ar_queue.application.queries import get_exception, list_exceptions
 from finance_ops.ar_queue.application.sync import sync_from_warehouse, upsert_exception
@@ -20,6 +22,10 @@ from finance_ops.copilot.config import (
     demo_apply_enabled,
     prototype_mode_label,
 )
+from finance_ops.copilot.evidence_cache import (
+    cache_evidence_pack,
+    get_cached_evidence,
+)
 from finance_ops.copilot.investigate import build_evidence_pack, investigate_case
 from finance_ops.copilot.reasons import validate_reason_code
 from finance_ops.copilot.types import (
@@ -34,6 +40,16 @@ from finance_ops.copilot.types import (
 )
 from finance_ops.ar_queue.domain.matching import score_against_invoices
 from data_plane import repository as repo
+
+QueueDetail = Literal["summary", "full"]
+
+# Debounce repeated Spike A full syncs (workbench Sync spam / digest+queue).
+# Default 5s in app; tests should pass force=True on ensure_queue setup.
+_LAST_SYNC_MONO = 0.0
+
+
+def _sync_min_interval() -> float:
+    return float(os.getenv("COPILOT_SYNC_MIN_INTERVAL_SEC", "5") or "5")
 
 
 def _aging_days(opened_at: Any) -> int | None:
@@ -65,6 +81,11 @@ def _row_to_case(row: dict[str, Any], overlay: dict[str, Any] | None = None) -> 
     hyp = overlay.get("hypothesis")
     summary = overlay.get("summary")
     guidance = overlay.get("guidance")
+    band = None
+    if isinstance(hyp, dict):
+        band = hyp.get("confidence_band")
+    if band is None:
+        band = overlay.get("confidence_band")
     return Case(
         case_id=str(row["exception_id"]),
         exception_id=str(row["exception_id"]),
@@ -77,7 +98,7 @@ def _row_to_case(row: dict[str, Any], overlay: dict[str, Any] | None = None) -> 
         recommended_invoice_id=row.get("recommended_invoice_id"),
         match_score=float(row["match_score"]) if row.get("match_score") is not None else None,
         aging_days=_aging_days(row.get("opened_at")),
-        confidence_band=(hyp or {}).get("confidence_band") if isinstance(hyp, dict) else None,
+        confidence_band=band,
         hypothesis=MatchHypothesis.model_validate(hyp) if hyp else None,
         summary=InvestigationSummary.model_validate(summary) if summary else None,
         last_decision=overlay.get("last_decision"),
@@ -87,11 +108,61 @@ def _row_to_case(row: dict[str, Any], overlay: dict[str, Any] | None = None) -> 
     )
 
 
-def ensure_queue(*, sync: bool = True) -> dict[str, Any]:
+def _row_to_case_summary(
+    row: dict[str, Any],
+    overlay: dict[str, Any],
+) -> dict[str, Any]:
+    """List DTO: same Case keys, heavy nested blobs nulled to cut JSON bloat."""
+    hyp = overlay.get("hypothesis") if isinstance(overlay.get("hypothesis"), dict) else {}
+    band = hyp.get("confidence_band") or overlay.get("confidence_band")
+    eid = str(row["exception_id"])
+    return {
+        "case_id": eid,
+        "exception_id": eid,
+        "lane": str(row.get("lane") or "cash_app"),
+        "customer_id": row.get("customer_id"),
+        "payment_id": row.get("source_id"),
+        "amount": float(row["amount"]) if row.get("amount") is not None else None,
+        "currency": str(row.get("currency") or "USD"),
+        "status": str(row.get("status") or "open"),
+        "recommended_invoice_id": row.get("recommended_invoice_id"),
+        "match_score": (
+            float(row["match_score"]) if row.get("match_score") is not None else None
+        ),
+        "aging_days": _aging_days(row.get("opened_at")),
+        "confidence_band": band,
+        "hypothesis": None,
+        "summary": None,
+        "last_decision": overlay.get("last_decision"),
+        "reason_code": overlay.get("reason_code"),
+        "guidance": None,
+        "payload": {},
+        # Additive flag for digest/UI without shipping full hypothesis.
+        "insufficient_data": bool(hyp.get("insufficient_data")),
+    }
+
+
+def ensure_queue(*, sync: bool = True, force: bool = False) -> dict[str, Any]:
     """Materialize Spike A / warehouse exceptions into the Copilot queue."""
-    if sync:
-        return sync_from_warehouse()
-    return {"status": "skipped", "synced_count": 0}
+    global _LAST_SYNC_MONO
+    if not sync:
+        return {"status": "skipped", "synced_count": 0}
+    interval = _sync_min_interval()
+    now = time.monotonic()
+    if (
+        not force
+        and interval > 0
+        and _LAST_SYNC_MONO > 0
+        and (now - _LAST_SYNC_MONO) < interval
+    ):
+        return {
+            "status": "throttled",
+            "synced_count": 0,
+            "retry_after_sec": round(interval - (now - _LAST_SYNC_MONO), 2),
+        }
+    result = sync_from_warehouse()
+    _LAST_SYNC_MONO = time.monotonic()
+    return result
 
 
 def list_queue(
@@ -100,28 +171,43 @@ def list_queue(
     lane: str | None = "cash_app",
     limit: int = 50,
     sync_first: bool = False,
+    detail: QueueDetail = "summary",
 ) -> dict[str, Any]:
+    sync_meta: dict[str, Any] | None = None
     if sync_first:
-        ensure_queue(sync=True)
+        sync_meta = ensure_queue(sync=True)
 
-    # "open" for Copilot includes investigation + post-decision waiting statuses
-    listed = list_exceptions(status=status, lane=lane, limit=max(limit, 200))
+    # Small headroom for status filter; avoid always pulling the 200-row ceiling.
+    fetch_limit = min(200, max(limit + 25, limit))
+    listed = list_exceptions(status=status, lane=lane, limit=fetch_limit)
     rows = list(listed.get("exceptions") or [])
     if status == "open":
         rows = [r for r in rows if str(r.get("status")) in COPILOT_QUEUE_STATUSES]
     rows.sort(key=_rank_key, reverse=True)
     rows = rows[:limit]
-    cases = [_row_to_case(r).model_dump() for r in rows]
-    return {
+
+    case_ids = [str(r["exception_id"]) for r in rows]
+    overlays = case_store.load_overlays(case_ids)
+    if detail == "full":
+        cases = [_row_to_case(r, overlays[str(r["exception_id"])]).model_dump() for r in rows]
+    else:
+        cases = [
+            _row_to_case_summary(r, overlays[str(r["exception_id"])]) for r in rows
+        ]
+    out: dict[str, Any] = {
         "status": "success",
         "count": len(cases),
         "cases": cases,
+        "detail": detail,
         "mode": copilot_mode(),
         "prototype_mode": prototype_mode_label(),
         "email_evidence": copilot_email_evidence_enabled(),
         "demo_apply": demo_apply_enabled(),
         "needs_review": any(c.get("status") in OPEN_STATUSES for c in cases),
     }
+    if sync_meta is not None:
+        out["sync"] = sync_meta
+    return out
 
 
 def get_case(case_id: str) -> dict[str, Any]:
@@ -143,6 +229,14 @@ def get_case(case_id: str) -> dict[str, Any]:
 
 
 def get_evidence(case_id: str, *, actor: str = "api") -> dict[str, Any]:
+    cached = get_cached_evidence(case_id, actor=actor)
+    if cached is not None:
+        return {
+            "status": "success",
+            "evidence": cached,
+            "cache": "hit",
+        }
+
     got = get_exception(case_id)
     if got.get("status") != "success":
         return {"status": "not_found", "case_id": case_id}
@@ -165,6 +259,8 @@ def get_evidence(case_id: str, *, actor: str = "api") -> dict[str, Any]:
         scored=scored,
         actor=actor,
     )
+    pack_dump = pack.model_dump()
+    cache_evidence_pack(case_id, actor=actor, pack=pack_dump)
     case_store.append_audit(
         case_id,
         "evidence_retrieved",
@@ -180,7 +276,7 @@ def get_evidence(case_id: str, *, actor: str = "api") -> dict[str, Any]:
             ],
         },
     )
-    return {"status": "success", "evidence": pack.model_dump()}
+    return {"status": "success", "evidence": pack_dump, "cache": "miss"}
 
 
 def investigate(case_id: str, *, actor: str = "api") -> dict[str, Any]:
@@ -230,13 +326,12 @@ def update_hypothesis(case_id: str, update: HypothesisUpdate, *, actor: str = "a
         raw_notes=update.raw_notes if update.raw_notes is not None else existing.get("raw_notes"),
         edited=True,
     )
-    # Preserve raw; only update current (edited) hypothesis.
-    case_store.set_hypothesis(case_id, hyp, raw=False)
-    case_store.append_audit(
+    # Preserve raw; single overlay write for edited hypothesis + audit.
+    case_store.persist_hypothesis_edit(
         case_id,
-        "hypothesis_edited",
+        hypothesis=hyp,
         actor=actor,
-        detail={
+        audit_detail={
             "case_id": case_id,
             "customer_id": hyp.customer_id,
             "payment_id": hyp.payment_id,
@@ -507,12 +602,11 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
 
 def get_audit(case_id: str) -> dict[str, Any]:
     got = get_exception(case_id)
+    overlay = case_store.load_overlay(case_id)
     if got.get("status") != "success":
         # Still return overlay audit if any (case may be synthetic)
-        overlay = case_store.load_overlay(case_id)
         if not overlay.get("audit"):
             return {"status": "not_found", "case_id": case_id}
-    overlay = case_store.load_overlay(case_id)
     return {
         "status": "success",
         "case_id": case_id,

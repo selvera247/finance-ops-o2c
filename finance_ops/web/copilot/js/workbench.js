@@ -1,5 +1,7 @@
 /**
  * Copilot workbench composition — wires components to /v1/copilot/* APIs.
+ * Hot-path notes: abort in-flight case fetches, reuse investigate payload,
+ * avoid queue reload on every case open, split queue vs detail paints.
  * @module workbench
  */
 
@@ -17,7 +19,9 @@ import {
   HypothesisDraft,
   jumpToEvidence,
 } from "./components/index.js";
-import { announce, isInsufficient } from "./utils.js";
+import { announce, debounce, isInsufficient } from "./utils.js";
+
+const QUEUE_PAGE = 50;
 
 /**
  * @typedef {Object} WorkbenchOptions
@@ -51,6 +55,7 @@ export class CopilotWorkbench {
 
     this.queueLoading = true;
     this.queueError = null;
+    this.queueVisible = QUEUE_PAGE;
     this.detailLoading = false;
     this.detailError = null;
     this.investigating = false;
@@ -65,6 +70,12 @@ export class CopilotWorkbench {
       escalate: "escalate_materiality",
       need_info: "need_info_remittance",
     };
+
+    /** @type {AbortController|null} */
+    this._caseAbort = null;
+    /** @type {AbortController|null} */
+    this._queueAbort = null;
+    this._syncDebounced = debounce(() => this.refreshQueue(true), 400);
 
     this._mount();
   }
@@ -149,14 +160,14 @@ export class CopilotWorkbench {
     new Button(this.els.sync, {
       label: "Sync + refresh",
       ariaLabel: "Sync exception queue from warehouse",
-      onClick: () => this.refreshQueue(true),
+      onClick: () => this._syncDebounced(),
     }).render();
 
     if (this.showDigest) {
       this.els.digest.hidden = false;
     }
 
-    this._paint();
+    this._paintAll();
     this.bootstrap();
   }
 
@@ -173,21 +184,30 @@ export class CopilotWorkbench {
       this.statusText = String(err.message || err);
       this.els.modeMeta.textContent = this.statusText;
     }
+    // First load syncs once; subsequent Sync clicks are debounced + server-throttled.
     await this.refreshQueue(true);
     if (this.showDigest) {
       await this.refreshDigest();
     }
   }
 
-  _paint() {
+  _paintQueue() {
     this.queueView.update({
       cases: this.cases,
       loading: this.queueLoading,
       error: this.queueError,
       selectedId: this.selectedId,
+      visibleCount: this.queueVisible,
+      pageSize: QUEUE_PAGE,
       onSelect: (id) => this.openCase(id),
+      onShowMore: () => {
+        this.queueVisible += QUEUE_PAGE;
+        this._paintQueue();
+      },
     });
+  }
 
+  _paintDetail() {
     this.caseHeaderView.update({
       caseData: this.caseData,
       loading: this.detailLoading && !this.caseData,
@@ -255,30 +275,48 @@ export class CopilotWorkbench {
       confidenceBand: this.auditMeta.confidence_band,
       loading: this.detailLoading && !this.auditEvents.length,
     });
+  }
 
+  _paintDigest() {
     if (this.showDigest) {
       this.digestView.update({ digest: this.digest });
     }
+  }
+
+  _paintAll() {
+    this._paintQueue();
+    this._paintDetail();
+    this._paintDigest();
   }
 
   /**
    * @param {boolean} [sync]
    */
   async refreshQueue(sync = false) {
+    this._queueAbort?.abort();
+    this._queueAbort = new AbortController();
+    const { signal } = this._queueAbort;
+
     this.queueLoading = true;
     this.queueError = null;
-    this._paint();
+    this._paintQueue();
     try {
-      const q = await this.api.queue({ sync, lane: "cash_app" });
+      const q = await this.api.queue(
+        { sync, lane: "cash_app", detail: "summary" },
+        { signal },
+      );
+      if (signal.aborted) return;
       this.cases = q.cases || [];
+      this.queueVisible = Math.min(QUEUE_PAGE, this.cases.length || QUEUE_PAGE);
       this.queueLoading = false;
       announce(`Queue loaded, ${this.cases.length} cases`);
-      this._paint();
+      this._paintQueue();
     } catch (err) {
+      if (err?.name === "AbortError" || signal.aborted) return;
       this.queueLoading = false;
       this.queueError = String(err.message || err);
       announce(this.queueError, "assertive");
-      this._paint();
+      this._paintQueue();
     }
   }
 
@@ -293,26 +331,45 @@ export class CopilotWorkbench {
         items: [],
       };
     }
-    this._paint();
+    this._paintDigest();
+  }
+
+  /**
+   * Patch selected queue row status without a full GET /queue.
+   * @param {string} caseId
+   * @param {Partial<import('./types.js').CaseSummary>} patch
+   */
+  _patchCaseRow(caseId, patch) {
+    this.cases = this.cases.map((c) =>
+      c.case_id === caseId ? { ...c, ...patch } : c,
+    );
+    this._paintQueue();
   }
 
   /** @param {string} caseId */
   async openCase(caseId) {
+    this._caseAbort?.abort();
+    this._caseAbort = new AbortController();
+    const { signal } = this._caseAbort;
+
     this.selectedId = caseId;
     this.detailLoading = true;
     this.detailError = null;
     this.actionError = null;
     this.draftLines = null;
     this.draftNotes = "";
-    this._paint();
+    // Selection highlight only — do not refetch the whole queue.
+    this._paintQueue();
+    this._paintDetail();
     this.els.detailStatus.textContent = `Opening ${caseId}`;
 
     try {
       const [c, e, a] = await Promise.all([
-        this.api.case(caseId),
-        this.api.evidence(caseId, this.actor),
-        this.api.audit(caseId),
+        this.api.case(caseId, { signal }),
+        this.api.evidence(caseId, this.actor, { signal }),
+        this.api.audit(caseId, { signal }),
       ]);
+      if (signal.aborted || this.selectedId !== caseId) return;
       this.caseData = c.case || null;
       this.evidence = e.evidence?.items || [];
       this.auditEvents = a.audit || [];
@@ -327,9 +384,10 @@ export class CopilotWorkbench {
       this.draftNotes = this.caseData?.hypothesis?.raw_notes || "";
       this.detailLoading = false;
       announce(`Opened case ${caseId}`);
-      this._paint();
-      await this.refreshQueue(false);
+      this._paintDetail();
+      this._paintQueue();
     } catch (err) {
+      if (err?.name === "AbortError" || signal.aborted) return;
       this.detailLoading = false;
       this.detailError = String(err.message || err);
       const payload = err.payload?.detail || err.payload;
@@ -341,35 +399,72 @@ export class CopilotWorkbench {
         this.detailError = `Cross-customer retrieve denied. ${this.detailError}`;
       }
       announce(this.detailError, "assertive");
-      this._paint();
+      this._paintDetail();
     }
   }
 
   async investigate() {
     if (!this.selectedId) return;
+    const caseId = this.selectedId;
     this.investigating = true;
     this.actionError = null;
-    this._paint();
+    this._paintDetail();
     try {
-      await this.api.investigate(this.selectedId, { actor: this.actor });
+      const out = await this.api.investigate(caseId, { actor: this.actor });
+      if (this.selectedId !== caseId) return;
+      // Reuse investigate response — skip openCase (would rebuild evidence again).
+      if (out.hypothesis || out.summary) {
+        this.caseData = {
+          ...(this.caseData || { case_id: caseId }),
+          hypothesis: out.hypothesis || this.caseData?.hypothesis,
+          summary: out.summary || this.caseData?.summary,
+          confidence_band: out.hypothesis?.confidence_band,
+        };
+        this.draftLines = out.hypothesis?.lines
+          ? out.hypothesis.lines.map((l) => ({ ...l }))
+          : this.draftLines;
+        this.draftNotes = out.hypothesis?.raw_notes || this.draftNotes;
+      }
+      if (out.evidence?.items) {
+        this.evidence = out.evidence.items;
+      }
+      this._patchCaseRow(caseId, {
+        confidence_band: out.hypothesis?.confidence_band,
+        insufficient_data: out.hypothesis?.insufficient_data,
+      });
+      // Refresh audit only (cheap overlay read) — evidence already in hand.
+      try {
+        const a = await this.api.audit(caseId);
+        if (this.selectedId === caseId) {
+          this.auditEvents = a.audit || [];
+          this.auditMeta = {
+            decision_actor: a.decision_actor,
+            decision_at: a.decision_at,
+            confidence_band: a.confidence_band,
+          };
+        }
+      } catch {
+        /* non-fatal */
+      }
       announce("Investigation complete");
-      await this.openCase(this.selectedId);
+      this._paintDetail();
     } catch (err) {
       this.actionError = String(err.message || err);
       announce(this.actionError, "assertive");
     } finally {
       this.investigating = false;
-      this._paint();
+      this._paintDetail();
     }
   }
 
   async saveHypothesis() {
     if (!this.selectedId || !this.draftLines) return;
+    const caseId = this.selectedId;
     this.actionBusy = true;
     this.actionError = null;
-    this._paint();
+    this._paintDetail();
     try {
-      await this.api.updateHypothesis(this.selectedId, {
+      const out = await this.api.updateHypothesis(caseId, {
         lines: this.draftLines
           .filter((l) => l.invoice_id)
           .map((l) => ({
@@ -380,14 +475,17 @@ export class CopilotWorkbench {
         raw_notes: this.draftNotes,
         actor: this.actor,
       });
+      if (out.hypothesis && this.caseData) {
+        this.caseData = { ...this.caseData, hypothesis: out.hypothesis };
+      }
       announce("Hypothesis saved");
-      await this.openCase(this.selectedId);
+      this._paintDetail();
     } catch (err) {
       this.actionError = String(err.message || err);
       announce(this.actionError, "assertive");
     } finally {
       this.actionBusy = false;
-      this._paint();
+      this._paintDetail();
     }
   }
 
@@ -397,9 +495,10 @@ export class CopilotWorkbench {
    */
   async decide(decision, reasonCode) {
     if (!this.selectedId) return;
+    const caseId = this.selectedId;
     this.actionBusy = true;
     this.actionError = null;
-    this._paint();
+    this._paintDetail();
     try {
       const body = {
         decision,
@@ -418,20 +517,53 @@ export class CopilotWorkbench {
           raw_notes: this.draftNotes,
         };
       }
-      const out = await this.api.decide(this.selectedId, body);
+      const out = await this.api.decide(caseId, body);
+      if (out.guidance && this.caseData) {
+        this.caseData = {
+          ...this.caseData,
+          guidance: out.guidance,
+          status: out.case_status || this.caseData.status,
+          last_decision: out.decision,
+          reason_code: out.reason_code || reasonCode,
+        };
+      } else if (this.caseData) {
+        this.caseData = {
+          ...this.caseData,
+          status: out.case_status || this.caseData.status,
+          last_decision: out.decision,
+          reason_code: out.reason_code || reasonCode,
+        };
+      }
+      this._patchCaseRow(caseId, {
+        status: out.case_status,
+      });
       if (out.guidance) {
         announce("Guidance packet ready");
       } else {
         announce(`Decision recorded: ${decision}`);
       }
-      await this.openCase(this.selectedId);
+      // One queue refresh after mutation (not openCase + refresh).
       await this.refreshQueue(false);
+      try {
+        const a = await this.api.audit(caseId);
+        if (this.selectedId === caseId) {
+          this.auditEvents = a.audit || [];
+          this.auditMeta = {
+            decision_actor: a.decision_actor,
+            decision_at: a.decision_at,
+            confidence_band: a.confidence_band,
+          };
+        }
+      } catch {
+        /* non-fatal */
+      }
+      this._paintDetail();
     } catch (err) {
       this.actionError = String(err.message || err);
       announce(this.actionError, "assertive");
     } finally {
       this.actionBusy = false;
-      this._paint();
+      this._paintDetail();
     }
   }
 }

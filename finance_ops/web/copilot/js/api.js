@@ -1,5 +1,6 @@
 /**
  * Thin Copilot HTTP client — no implicit globals; pass baseUrl / token explicitly.
+ * Supports AbortSignal for in-flight cancel on rapid case switches.
  * @module api
  */
 
@@ -37,6 +38,11 @@ export class CopilotApi {
       headers,
       body: json !== undefined ? JSON.stringify(json) : rest.body,
     });
+    if (rest.signal?.aborted) {
+      const err = new Error("aborted");
+      err.name = "AbortError";
+      throw err;
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const detail = data.detail?.error || data.detail || data.error || res.statusText;
@@ -50,72 +56,83 @@ export class CopilotApi {
     return data;
   }
 
-  status() {
-    return this.request("/v1/copilot/status");
+  status(opts = {}) {
+    return this.request("/v1/copilot/status", opts);
   }
 
   /**
-   * @param {{ sync?: boolean, lane?: string, status?: string, limit?: number }} [q]
+   * @param {{ sync?: boolean, lane?: string, status?: string, limit?: number, detail?: string }} [q]
+   * @param {RequestInit} [opts]
    */
-  queue(q = {}) {
+  queue(q = {}, opts = {}) {
     const params = new URLSearchParams();
     if (q.sync) params.set("sync", "true");
     if (q.lane) params.set("lane", q.lane);
     if (q.status) params.set("status", q.status);
     if (q.limit != null) params.set("limit", String(q.limit));
+    // List views default to slim payloads (hypothesis/guidance omitted).
+    params.set("detail", q.detail || "summary");
     const qs = params.toString();
-    return this.request(`/v1/copilot/queue${qs ? `?${qs}` : ""}`);
+    return this.request(`/v1/copilot/queue${qs ? `?${qs}` : ""}`, opts);
   }
 
   /**
    * @param {{ force?: boolean, sync?: boolean, limit?: number }} [q]
+   * @param {RequestInit} [opts]
    */
-  digest(q = {}) {
+  digest(q = {}, opts = {}) {
     const params = new URLSearchParams();
     if (q.force) params.set("force", "true");
     if (q.sync) params.set("sync", "true");
     if (q.limit != null) params.set("limit", String(q.limit));
     const qs = params.toString();
-    return this.request(`/v1/copilot/digest${qs ? `?${qs}` : ""}`);
+    return this.request(`/v1/copilot/digest${qs ? `?${qs}` : ""}`, opts);
   }
 
-  /** @param {string} caseId */
-  case(caseId) {
-    return this.request(`/v1/copilot/cases/${encodeURIComponent(caseId)}`);
+  /** @param {string} caseId @param {RequestInit} [opts] */
+  case(caseId, opts = {}) {
+    return this.request(`/v1/copilot/cases/${encodeURIComponent(caseId)}`, opts);
   }
 
   /**
    * @param {string} caseId
    * @param {string} [actor]
+   * @param {RequestInit} [opts]
    */
-  evidence(caseId, actor = "workbench") {
+  evidence(caseId, actor = "workbench", opts = {}) {
     const q = new URLSearchParams({ actor });
     return this.request(
       `/v1/copilot/cases/${encodeURIComponent(caseId)}/evidence?${q}`,
+      opts,
     );
   }
 
-  /** @param {string} caseId */
-  audit(caseId) {
-    return this.request(`/v1/copilot/cases/${encodeURIComponent(caseId)}/audit`);
+  /** @param {string} caseId @param {RequestInit} [opts] */
+  audit(caseId, opts = {}) {
+    return this.request(
+      `/v1/copilot/cases/${encodeURIComponent(caseId)}/audit`,
+      opts,
+    );
   }
 
   /**
    * @param {string} caseId
    * @param {{ actor?: string }} [body]
+   * @param {RequestInit} [opts]
    */
-  investigate(caseId, body = {}) {
+  investigate(caseId, body = {}, opts = {}) {
     return this.request(
       `/v1/copilot/cases/${encodeURIComponent(caseId)}/investigate`,
-      { method: "POST", json: { actor: body.actor || "workbench" } },
+      { method: "POST", json: { actor: body.actor || "workbench" }, ...opts },
     );
   }
 
   /**
    * @param {string} caseId
    * @param {{ lines: import('./types.js').MatchLine[], raw_notes?: string|null, confidence_band?: string|null, actor?: string }} body
+   * @param {RequestInit} [opts]
    */
-  updateHypothesis(caseId, body) {
+  updateHypothesis(caseId, body, opts = {}) {
     return this.request(
       `/v1/copilot/cases/${encodeURIComponent(caseId)}/hypothesis`,
       {
@@ -126,6 +143,7 @@ export class CopilotApi {
           confidence_band: body.confidence_band ?? null,
           actor: body.actor || "workbench",
         },
+        ...opts,
       },
     );
   }
@@ -133,8 +151,9 @@ export class CopilotApi {
   /**
    * @param {string} caseId
    * @param {{ decision: string, actor?: string, reason_code?: string|null, notes?: string|null, hypothesis?: unknown }} body
+   * @param {RequestInit} [opts]
    */
-  decide(caseId, body) {
+  decide(caseId, body, opts = {}) {
     return this.request(
       `/v1/copilot/cases/${encodeURIComponent(caseId)}/decision`,
       {
@@ -146,6 +165,7 @@ export class CopilotApi {
           notes: body.notes ?? null,
           hypothesis: body.hypothesis ?? null,
         },
+        ...opts,
       },
     );
   }

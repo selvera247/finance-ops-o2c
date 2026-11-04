@@ -1,10 +1,13 @@
 /**
  * Ranked exception queue with empty / loading / error states.
+ * Paginate long queues client-side to avoid unbounded DOM rows.
  * @module components/ExceptionQueue
  */
 
 import { Component, el, formatMoney, setChildren } from "../utils.js";
 import { Skeleton } from "./shared.js";
+
+const DEFAULT_PAGE_SIZE = 50;
 
 /**
  * @typedef {Object} ExceptionQueueProps
@@ -16,6 +19,9 @@ import { Skeleton } from "./shared.js";
  * @property {string} [ariaLabel]
  * @property {(caseId: string) => void} [onSelect]
  * @property {string} [emptyMessage]
+ * @property {number} [pageSize]
+ * @property {number} [visibleCount]
+ * @property {() => void} [onShowMore]
  */
 
 export class ExceptionQueue extends Component {
@@ -23,6 +29,7 @@ export class ExceptionQueue extends Component {
     /** @type {ExceptionQueueProps} */
     const p = this.props;
     const label = p.ariaLabel || "Exception queue";
+    const pageSize = p.pageSize || DEFAULT_PAGE_SIZE;
 
     if (p.loading) {
       const sk = el("div", {
@@ -74,6 +81,12 @@ export class ExceptionQueue extends Component {
       return;
     }
 
+    const visible = Math.min(
+      p.visibleCount != null ? p.visibleCount : pageSize,
+      cases.length,
+    );
+    const slice = cases.slice(0, visible);
+
     const list = el(
       "div",
       {
@@ -82,7 +95,7 @@ export class ExceptionQueue extends Component {
         "aria-label": label,
         "data-state": "ready",
       },
-      ...cases.map((c) => {
+      ...slice.map((c) => {
         const selected = c.case_id === p.selectedId;
         return el(
           "button",
@@ -115,6 +128,22 @@ export class ExceptionQueue extends Component {
         );
       }),
     );
+
+    if (visible < cases.length) {
+      list.append(
+        el(
+          "button",
+          {
+            type: "button",
+            className: "cp-queue__more",
+            "aria-label": `Show more cases (${cases.length - visible} remaining)`,
+            onClick: () => p.onShowMore?.(),
+          },
+          `Show more (${cases.length - visible} remaining)`,
+        ),
+      );
+    }
+
     setChildren(this.root, list);
   }
 }

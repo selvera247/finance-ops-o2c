@@ -351,6 +351,26 @@
   margin-top: 0.2rem;
 }
 
+.cp-queue__more {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed var(--copilot-line, rgba(232, 238, 244, 0.2));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--copilot-muted, #8b9aab);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.cp-queue__more:hover {
+  border-color: var(--copilot-accent, #3d8bfd);
+  color: var(--copilot-ink, #e8eef4);
+}
+
 .cp-queue__empty,
 .cp-queue__error {
   padding: var(--copilot-space-3);

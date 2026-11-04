@@ -42,7 +42,7 @@ def _prepare_spike(*, replace: bool = True) -> None:
     load_spike_a(replace_customers=replace)
     db.init_schema()
     db.execute("DELETE FROM ar_exceptions WHERE lane = 'cash_app'")
-    copilot.ensure_queue(sync=True)
+    copilot.ensure_queue(sync=True, force=True)
 
 
 def run_scoreboard(*, gold_path: Path | None = None) -> dict[str, Any]:

@@ -87,13 +87,20 @@ def get_queue(
     lane: str | None = "cash_app",
     limit: int = 50,
     sync: bool = False,
+    detail: str = "summary",
 ) -> dict[str, Any]:
-    """Ranked Copilot exception queue (aging × amount × confidence)."""
+    """Ranked Copilot exception queue (aging × amount × confidence).
+
+    detail=summary (default) omits hypothesis/summary/guidance/payload blobs.
+    detail=full returns the previous fat Case shape (used by digest).
+    """
+    detail_norm = "full" if str(detail).strip().lower() == "full" else "summary"
     return copilot_service.list_queue(
         status=status or None,
         lane=lane,
         limit=limit,
         sync_first=sync,
+        detail=detail_norm,  # type: ignore[arg-type]
     )
 
 

@@ -194,6 +194,17 @@ def test_workbench_uses_live_api_client() -> None:
     assert "acceptDisabled" in src
     # No warehouse apply on happy path messaging
     assert "Guidance-only" in src or "guidance-only" in src.lower()
+    # Hot-path perf: abort in-flight, reuse investigate, no queue reload on open.
+    assert "AbortController" in src
+    assert "detail: \"summary\"" in src or "detail: 'summary'" in src
+    assert "_paintQueue" in src
+    assert "Reuse investigate" in src or "out.evidence" in src
+
+
+def test_examples_lazy_loads_fixtures() -> None:
+    src = (UI_ROOT / "js" / "examples.js").read_text(encoding="utf-8")
+    assert 'import("./fixtures.js")' in src
+    assert "from \"./fixtures.js\"" not in src
 
 
 def test_jsdoc_types_mirror_decisions() -> None:

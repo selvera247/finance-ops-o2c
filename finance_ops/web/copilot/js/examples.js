@@ -1,5 +1,6 @@
 /**
  * Story-like examples page — each component in empty / loading / ready / error states.
+ * Fixtures are lazy-imported so the examples shell paints before payload JSON loads.
  * @module examples
  */
 
@@ -23,17 +24,6 @@ import {
   TextArea,
   TextInput,
 } from "./components/index.js";
-import {
-  FIXTURE_AUDIT,
-  FIXTURE_CASE_ABSTAIN,
-  FIXTURE_CASE_READY,
-  FIXTURE_CROSS_CUSTOMER_ERROR,
-  FIXTURE_DIGEST_OFF,
-  FIXTURE_EVIDENCE,
-  FIXTURE_EVIDENCE_THIN,
-  FIXTURE_GUIDANCE,
-  FIXTURE_QUEUE,
-} from "./fixtures.js";
 import { el } from "./utils.js";
 
 /**
@@ -299,10 +289,27 @@ function mountDigest(root) {
   }).render();
 }
 
-function main() {
+async function main() {
   const root = document.getElementById("examples-root");
   if (!root) return;
+  // Shared primitives need no fixtures — paint immediately.
   mountShared(root);
+  const status = el("p", { className: "copilot-muted", role: "status" }, "Loading example fixtures…");
+  root.append(status);
+  // Defer fixture JSON until after first paint / idle.
+  const fixtures = await import("./fixtures.js");
+  ({
+    FIXTURE_AUDIT,
+    FIXTURE_CASE_ABSTAIN,
+    FIXTURE_CASE_READY,
+    FIXTURE_CROSS_CUSTOMER_ERROR,
+    FIXTURE_DIGEST_OFF,
+    FIXTURE_EVIDENCE,
+    FIXTURE_EVIDENCE_THIN,
+    FIXTURE_GUIDANCE,
+    FIXTURE_QUEUE,
+  } = fixtures);
+  status.remove();
   mountQueue(root);
   mountCase(root);
   mountEvidence(root);
@@ -312,5 +319,24 @@ function main() {
   mountAudit(root);
   mountDigest(root);
 }
+
+/** @type {any} */
+let FIXTURE_AUDIT;
+/** @type {any} */
+let FIXTURE_CASE_ABSTAIN;
+/** @type {any} */
+let FIXTURE_CASE_READY;
+/** @type {any} */
+let FIXTURE_CROSS_CUSTOMER_ERROR;
+/** @type {any} */
+let FIXTURE_DIGEST_OFF;
+/** @type {any} */
+let FIXTURE_EVIDENCE;
+/** @type {any} */
+let FIXTURE_EVIDENCE_THIN;
+/** @type {any} */
+let FIXTURE_GUIDANCE;
+/** @type {any} */
+let FIXTURE_QUEUE;
 
 main();

@@ -37,7 +37,7 @@ def main() -> int:
 
     load_spike_a(replace_customers=True)
     _reset_cash_app_exceptions()
-    sync = copilot.ensure_queue(sync=True)
+    sync = copilot.ensure_queue(sync=True, force=True)
     print("sync", json.dumps({"synced_count": sync.get("synced_count")}, default=str))
 
     case_id = copilot.case_id_for_payment("PAY-1001")
