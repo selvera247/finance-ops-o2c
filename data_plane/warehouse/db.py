@@ -5,14 +5,14 @@ from typing import Any
 
 import duckdb
 
-from data_plane.config import DUCKDB_PATH, ensure_dirs
+from data_plane import config as data_config
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
 def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
-    ensure_dirs()
-    return duckdb.connect(str(DUCKDB_PATH), read_only=read_only)
+    data_config.ensure_dirs()
+    return duckdb.connect(str(data_config.DUCKDB_PATH), read_only=read_only)
 
 
 def init_schema(con: duckdb.DuckDBPyConnection | None = None) -> None:

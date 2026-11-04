@@ -7,11 +7,14 @@ Guidance-only apply remains the happy path. API contracts are unchanged.
 ## Run the UI
 
 ```bash
-# optional: seed Spike A cases
+# optional manual seed (Sync + refresh also auto-seeds Spike A when the
+# warehouse has no unmatched payments — needed on ephemeral Cloud Run)
 PYTHONPATH=. python scripts/load_spike_a.py --replace-customers
 
 uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
 ```
+
+Set `COPILOT_AUTO_SEED=0` to disable Sync-time Spike A seeding.
 
 | URL | Purpose |
 | --- | --- |
