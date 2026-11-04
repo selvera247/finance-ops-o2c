@@ -208,7 +208,7 @@ export class CopilotWorkbench {
       loading: this.actionBusy,
       error: this.actionError,
       disabled: !this.caseData || this.detailLoading,
-      acceptDisabled: insuff,
+      acceptDisabled: !this.caseData || insuff,
       investigating: this.investigating,
       rejectReason: this.reasons.reject,
       escalateReason: this.reasons.escalate,

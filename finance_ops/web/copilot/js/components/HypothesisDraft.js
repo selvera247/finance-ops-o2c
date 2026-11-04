@@ -24,13 +24,6 @@ export class HypothesisDraft extends Component {
   render() {
     /** @type {HypothesisDraftProps} */
     const p = this.props;
-    const hyp = p.hypothesis || { lines: [], citation_map: [], confidence_band: "insufficient" };
-    const lines = Array.isArray(hyp.lines) && hyp.lines.length
-      ? hyp.lines.map((l) => ({ ...l }))
-      : [{ invoice_id: "", amount: 0, rationale: "" }];
-    const notes = hyp.raw_notes || "";
-    const insufficient = isInsufficient(hyp);
-    const editable = p.editable !== false;
 
     if (p.loading) {
       setChildren(
@@ -58,6 +51,28 @@ export class HypothesisDraft extends Component {
       );
       return;
     }
+
+    if (!p.hypothesis) {
+      setChildren(
+        this.root,
+        el("div", {
+          className: "copilot-muted",
+          role: "status",
+          "data-state": "empty",
+          "aria-label": p.ariaLabel || "Match hypothesis",
+          text: "No hypothesis yet — select a case and run Investigate.",
+        }),
+      );
+      return;
+    }
+
+    const hyp = p.hypothesis;
+    const lines = Array.isArray(hyp.lines) && hyp.lines.length
+      ? hyp.lines.map((l) => ({ ...l }))
+      : [{ invoice_id: "", amount: 0, rationale: "" }];
+    const notes = hyp.raw_notes || "";
+    const insufficient = isInsufficient(hyp);
+    const editable = p.editable !== false;
 
     const root = el("div", {
       className: "cp-hypothesis",
