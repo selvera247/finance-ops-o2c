@@ -18,6 +18,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 app = FastAPI(
@@ -31,11 +32,22 @@ app = FastAPI(
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 _LEAKAGE_PAGE = _WEB_DIR / "leakage.html"
-_COPILOT_PAGE = _WEB_DIR / "copilot.html"
+_COPILOT_UI_DIR = _WEB_DIR / "copilot"
+_COPILOT_PAGE = _COPILOT_UI_DIR / "index.html"
+_COPILOT_EXAMPLES_PAGE = _COPILOT_UI_DIR / "examples.html"
+# Legacy single-file shell kept for reference; workbench now uses component layer.
+_COPILOT_LEGACY_PAGE = _WEB_DIR / "copilot.html"
 
 from finance_ops.copilot.router import router as copilot_router  # noqa: E402
 
 app.include_router(copilot_router)
+
+if _COPILOT_UI_DIR.is_dir():
+    app.mount(
+        "/copilot-static",
+        StaticFiles(directory=str(_COPILOT_UI_DIR)),
+        name="copilot_static",
+    )
 
 
 def _bearer_or_header_token(
@@ -177,11 +189,35 @@ def leakage_self_serve() -> FileResponse:
 
 @app.get("/copilot")
 def copilot_workbench() -> FileResponse:
-    """Thin Copilot workbench — queue + case detail + actions (MVP shell)."""
+    """Copilot workbench — component-layer UI wired to /v1/copilot/*."""
     if not _COPILOT_PAGE.is_file():
         raise HTTPException(status_code=404, detail="copilot page missing")
     return FileResponse(
         _COPILOT_PAGE,
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/copilot/examples")
+def copilot_ui_examples() -> FileResponse:
+    """Story fixtures for Copilot UI components (empty / loading / error / ready)."""
+    if not _COPILOT_EXAMPLES_PAGE.is_file():
+        raise HTTPException(status_code=404, detail="copilot examples page missing")
+    return FileResponse(
+        _COPILOT_EXAMPLES_PAGE,
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/copilot/legacy")
+def copilot_legacy_shell() -> FileResponse:
+    """Previous single-file shell (reference only)."""
+    if not _COPILOT_LEGACY_PAGE.is_file():
+        raise HTTPException(status_code=404, detail="legacy copilot page missing")
+    return FileResponse(
+        _COPILOT_LEGACY_PAGE,
         media_type="text/html; charset=utf-8",
         headers={"Cache-Control": "no-cache"},
     )
@@ -203,14 +239,21 @@ def health() -> dict[str, Any]:
         "model": os.getenv("FINANCE_OPS_MODEL", "gemini-3.1-flash-lite"),
         "data_mode": os.getenv("FINANCE_OPS_DATA_MODE", "warehouse"),
         "auth": write_auth_status(),
-        "self_serve": {"leakage": "/leakage", "copilot": "/copilot"},
+        "self_serve": {
+            "leakage": "/leakage",
+            "copilot": "/copilot",
+            "copilot_examples": "/copilot/examples",
+        },
         "copilot": {
             "mode": copilot_mode(),
             "prototype_mode": prototype_mode_label(),
             "email_evidence": copilot_email_evidence_enabled(),
             "demo_apply": demo_apply_enabled(),
             "docs": "/docs",
+            "ui_docs": "docs/copilot-ui.md",
             "queue": "/v1/copilot/queue",
+            "examples": "/copilot/examples",
+            "static": "/copilot-static/",
         },
     }
 

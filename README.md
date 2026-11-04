@@ -4,7 +4,7 @@
 
 Slack HITL Approve → warehouse apply is a **contrast / notify** path (mode C), not the pilot primary UX. HubSpot leakage, portal Spike B, SKU metering, GraphRAG/Vector critical path, and multi-agent chat-as-UX are **parked** for the 10-week MVP.
 
-Docs: [docs/copilot-mvp.md](docs/copilot-mvp.md) · OpenAPI `/docs` · workbench `/copilot`
+Docs: [docs/copilot-mvp.md](docs/copilot-mvp.md) · [docs/copilot-ui.md](docs/copilot-ui.md) · OpenAPI `/docs` · workbench `/copilot` · examples `/copilot/examples`
 
 Legacy portfolio surfaces (ADK agents, free wedges, Cloud Run demos) remain in-tree for reuse.
 
@@ -15,6 +15,7 @@ PYTHONPATH=. python scripts/load_spike_a.py --replace-customers
 PYTHONPATH=. python scripts/copilot_spike_a_e2e.py
 uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
 # http://127.0.0.1:8080/copilot
+# http://127.0.0.1:8080/copilot/examples
 ```
 
 Prototype modes A–D: `COPILOT_MODE=workbench|slack_contrast|rules_only` and `COPILOT_EMAIL_EVIDENCE=0|1` (fixture/IMAP mailbox + actor ACL; see [docs/copilot-mvp.md](docs/copilot-mvp.md)). Remittance PDF/OCR extract lives under `finance_ops/copilot/remittance/`. Digest: `scripts/copilot_digest.py` / `GET /v1/copilot/digest` (`COPILOT_DIGEST_ENABLED=0` by default). Policy `auto_allow_max` stays **0** — Copilot never auto-applies.

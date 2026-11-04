@@ -9,9 +9,11 @@ Slack HITL Approve → warehouse apply remains available as a **contrast / notif
 ```bash
 PYTHONPATH=. python scripts/load_spike_a.py --replace-customers
 PYTHONPATH=. python scripts/copilot_spike_a_e2e.py
-# optional UI
+# UI (component layer)
 uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
-# open http://127.0.0.1:8080/copilot  and  /docs
+# open http://127.0.0.1:8080/copilot
+# examples: http://127.0.0.1:8080/copilot/examples
+# OpenAPI: /docs  ·  UI docs: docs/copilot-ui.md
 ```
 
 ## HTTP API
@@ -28,7 +30,7 @@ uvicorn finance_ops.serving:app --host 0.0.0.0 --port 8080
 | POST | `/v1/copilot/cases/{id}/decision` | Decision → guidance / status (write-gated) |
 | GET | `/v1/copilot/cases/{id}/audit` | Timeline + discovery-minimum fields |
 
-OpenAPI: `/docs`. Thin workbench: `/copilot`.
+OpenAPI: `/docs`. Workbench: `/copilot`. Component examples: `/copilot/examples`. UI architecture: [copilot-ui.md](./copilot-ui.md).
 
 ## Prototype modes A–D
 
@@ -170,10 +172,13 @@ Investigate + decision events persist: `case_id`, `customer_id`, `payment_id`, `
 
 ## Workbench UX (`/copilot`)
 
+Component layer under `finance_ops/web/copilot/` (see [copilot-ui.md](./copilot-ui.md)):
+
 - Citations are clickable → scroll/highlight the evidence item
 - Insufficient-data banner disables confident Accept
-- Reject / Escalate / Need info require a reason-code select
+- Reject / Escalate / Need info require a reason-code select + confirm modal
 - ApplyGuidancePacket JSON + copy text shown after Accept / Edit & ready
+- Story fixtures at `/copilot/examples` (empty / loading / error / abstain / digest-off)
 
 ## Parked (not this slice)
 
@@ -193,7 +198,9 @@ finance_ops/copilot/remittance/       PDF text + OCR provider interface
 data/copilot/            mailbox + remittance fixtures + actor_acl.json
 scripts/copilot_digest.py
 finance_ops/ar_queue/    matching · statuses (extended) · sync/queries
-finance_ops/web/copilot.html
+finance_ops/web/copilot/ index · examples · css tokens · js components
+finance_ops/web/copilot.html   legacy single-file shell (/copilot/legacy)
 evals/copilot/           gold.yaml · checkers · run_scoreboard.py
-finance_ops/serving.py   mounts /v1/copilot/* + /copilot
+finance_ops/serving.py   mounts /v1/copilot/* + /copilot + /copilot-static
+docs/copilot-ui.md       UI architecture + how to run
 ```

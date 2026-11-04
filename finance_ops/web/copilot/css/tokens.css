@@ -1,0 +1,68 @@
+/**
+ * Cash-App Exception Copilot — design tokens
+ * Consumed as CSS custom properties; no implicit theme globals in JS.
+ */
+:root {
+  /* Surfaces */
+  --copilot-bg: #0e141b;
+  --copilot-bg-elevated: #151d27;
+  --copilot-panel: #1a2430;
+  --copilot-panel-hover: #213041;
+  --copilot-inset: #0b1118;
+
+  /* Ink */
+  --copilot-ink: #e7eef6;
+  --copilot-ink-muted: #8fa0b3;
+  --copilot-ink-subtle: #6b7c90;
+
+  /* Brand / accent (slate-teal, not purple) */
+  --copilot-accent: #2f9e8a;
+  --copilot-accent-strong: #248f7c;
+  --copilot-accent-soft: rgba(47, 158, 138, 0.16);
+  --copilot-focus: #5eb8ff;
+
+  /* Semantic */
+  --copilot-ok: #3ecf8e;
+  --copilot-ok-soft: rgba(62, 207, 142, 0.14);
+  --copilot-warn: #d4a017;
+  --copilot-warn-soft: rgba(212, 160, 23, 0.16);
+  --copilot-danger: #e86a73;
+  --copilot-danger-soft: rgba(232, 106, 115, 0.14);
+  --copilot-info: #5eb8ff;
+  --copilot-info-soft: rgba(94, 184, 255, 0.14);
+
+  /* Lines & elevation */
+  --copilot-line: rgba(231, 238, 246, 0.12);
+  --copilot-line-strong: rgba(231, 238, 246, 0.22);
+  --copilot-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+
+  /* Type */
+  --copilot-font: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", sans-serif;
+  --copilot-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+  --copilot-fs-xs: 0.72rem;
+  --copilot-fs-sm: 0.82rem;
+  --copilot-fs-md: 0.95rem;
+  --copilot-fs-lg: 1.15rem;
+  --copilot-fs-xl: 1.35rem;
+  --copilot-lh: 1.45;
+
+  /* Space & radius */
+  --copilot-space-1: 0.25rem;
+  --copilot-space-2: 0.5rem;
+  --copilot-space-3: 0.75rem;
+  --copilot-space-4: 1rem;
+  --copilot-space-5: 1.25rem;
+  --copilot-space-6: 1.75rem;
+  --copilot-radius-sm: 4px;
+  --copilot-radius: 8px;
+  --copilot-radius-lg: 12px;
+
+  /* Motion */
+  --copilot-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --copilot-dur-fast: 120ms;
+  --copilot-dur: 220ms;
+
+  /* Layout */
+  --copilot-queue-width: 22rem;
+  --copilot-header-h: 3.5rem;
+}
