@@ -55,6 +55,10 @@ export class CopilotWorkbench {
 
     this.queueLoading = true;
     this.queueError = null;
+    /** @type {string|null} */
+    this.queueEmptyHint = null;
+    /** @type {string|null} */
+    this.syncStatusText = null;
     this.queueVisible = QUEUE_PAGE;
     this.detailLoading = false;
     this.detailError = null;
@@ -157,11 +161,7 @@ export class CopilotWorkbench {
         "Accept emits an ApplyGuidancePacket for ERP copy/deep-link. Warehouse apply requires FINANCE_OPS_DEMO_APPLY=1.",
     }).render();
 
-    new Button(this.els.sync, {
-      label: "Sync + refresh",
-      ariaLabel: "Sync exception queue from warehouse",
-      onClick: () => this._syncDebounced(),
-    }).render();
+    this._paintSyncBar();
 
     if (this.showDigest) {
       this.els.digest.hidden = false;
@@ -169,6 +169,31 @@ export class CopilotWorkbench {
 
     this._paintAll();
     this.bootstrap();
+  }
+
+  _paintSyncBar() {
+    this.els.sync.innerHTML = "";
+    const row = document.createElement("div");
+    row.className = "copilot-row";
+    row.style.gap = "0.75rem";
+    row.style.alignItems = "center";
+    row.style.flexWrap = "wrap";
+    const btnMount = document.createElement("div");
+    row.appendChild(btnMount);
+    if (this.syncStatusText) {
+      const meta = document.createElement("span");
+      meta.className = "meta";
+      meta.setAttribute("role", "status");
+      meta.textContent = this.syncStatusText;
+      row.appendChild(meta);
+    }
+    this.els.sync.appendChild(row);
+    new Button(btnMount, {
+      label: this.queueLoading ? "Syncing…" : "Sync + refresh",
+      ariaLabel: "Sync exception queue from warehouse",
+      disabled: this.queueLoading,
+      onClick: () => this._syncDebounced(),
+    }).render();
   }
 
   async bootstrap() {
@@ -196,6 +221,9 @@ export class CopilotWorkbench {
       cases: this.cases,
       loading: this.queueLoading,
       error: this.queueError,
+      emptyMessage:
+        this.queueEmptyHint ||
+        "No cases. Sync the queue to load Spike A / warehouse exceptions.",
       selectedId: this.selectedId,
       visibleCount: this.queueVisible,
       pageSize: QUEUE_PAGE,
@@ -299,6 +327,8 @@ export class CopilotWorkbench {
 
     this.queueLoading = true;
     this.queueError = null;
+    this.queueEmptyHint = null;
+    this._paintSyncBar();
     this._paintQueue();
     try {
       const q = await this.api.queue(
@@ -309,13 +339,42 @@ export class CopilotWorkbench {
       this.cases = q.cases || [];
       this.queueVisible = Math.min(QUEUE_PAGE, this.cases.length || QUEUE_PAGE);
       this.queueLoading = false;
+
+      const syncMeta = q.sync || null;
+      if (sync && syncMeta) {
+        const seeded =
+          syncMeta.seed?.seeded || syncMeta.seed?.status === "success"
+            ? " · seeded Spike A"
+            : "";
+        if (syncMeta.status === "throttled") {
+          this.syncStatusText = `Sync throttled — retry in ${syncMeta.retry_after_sec || "?"}s`;
+        } else if (syncMeta.hint && !this.cases.length) {
+          this.syncStatusText = syncMeta.hint;
+          this.queueEmptyHint = syncMeta.hint;
+          this.queueError = syncMeta.hint;
+        } else {
+          this.syncStatusText = `Synced ${syncMeta.synced_count ?? 0} · payments ${syncMeta.payment_count ?? 0}${seeded}`;
+        }
+      } else if (!sync) {
+        this.syncStatusText = this.syncStatusText || null;
+      }
+
+      if (!this.cases.length && syncMeta?.payment_count === 0 && !this.queueError) {
+        this.queueEmptyHint =
+          syncMeta.hint ||
+          "Sync returned no unmatched payments — warehouse may be empty.";
+      }
+
       announce(`Queue loaded, ${this.cases.length} cases`);
+      this._paintSyncBar();
       this._paintQueue();
     } catch (err) {
       if (err?.name === "AbortError" || signal.aborted) return;
       this.queueLoading = false;
       this.queueError = String(err.message || err);
+      this.syncStatusText = this.queueError;
       announce(this.queueError, "assertive");
+      this._paintSyncBar();
       this._paintQueue();
     }
   }

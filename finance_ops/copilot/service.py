@@ -143,7 +143,11 @@ def _row_to_case_summary(
 
 
 def ensure_queue(*, sync: bool = True, force: bool = False) -> dict[str, Any]:
-    """Materialize Spike A / warehouse exceptions into the Copilot queue."""
+    """Materialize Spike A / warehouse exceptions into the Copilot queue.
+
+    On cold Cloud Run (empty ephemeral DuckDB), auto-seeds Spike A payments
+    before sync so ``lane=cash_app`` workbench queues are not left empty.
+    """
     global _LAST_SYNC_MONO
     if not sync:
         return {"status": "skipped", "synced_count": 0}
@@ -160,7 +164,26 @@ def ensure_queue(*, sync: bool = True, force: bool = False) -> dict[str, Any]:
             "synced_count": 0,
             "retry_after_sec": round(interval - (now - _LAST_SYNC_MONO), 2),
         }
+
+    from finance_ops.copilot.seed import ensure_spike_a_payments
+
+    # Seed *before* sync_from_warehouse → ensure_schema creates an empty DuckDB
+    # that would otherwise shadow fixture fallback and yield payment_count=0.
+    seed_meta = ensure_spike_a_payments(force=False)
     result = sync_from_warehouse()
+    if int(result.get("payment_count") or 0) == 0:
+        seed_meta = ensure_spike_a_payments(force=True)
+        if seed_meta.get("status") == "success":
+            result = sync_from_warehouse()
+
+    result = dict(result)
+    result["seed"] = seed_meta
+    if int(result.get("payment_count") or 0) == 0:
+        result["hint"] = (
+            "Warehouse has no unmatched payments after Sync. "
+            "Load Spike A (auto-seed) or POST /v1/bootstrap, then Sync again."
+        )
+        result["needs_review"] = True
     _LAST_SYNC_MONO = time.monotonic()
     return result
 
