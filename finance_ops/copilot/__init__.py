@@ -11,6 +11,8 @@ from finance_ops.copilot.config import (
     copilot_email_evidence_enabled,
     copilot_mode,
     demo_apply_enabled,
+    digest_enabled,
+    digest_send_enabled,
 )
 from finance_ops.copilot.types import (
     ApplyGuidancePacket,
@@ -35,4 +37,6 @@ __all__ = [
     "copilot_email_evidence_enabled",
     "copilot_mode",
     "demo_apply_enabled",
+    "digest_enabled",
+    "digest_send_enabled",
 ]

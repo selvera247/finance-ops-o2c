@@ -1,0 +1,14 @@
+{
+  "document_id": "REM-DOC-THIN",
+  "customer_id": "C-3329",
+  "payment_id": "PAY-3001",
+  "filename": "REM-SCAN-THIN.pdf",
+  "source_format": "ocr",
+  "expected_fields": {
+    "invoice_ids": [],
+    "payment_id": null,
+    "amount": null
+  },
+  "min_confidence": 0.0,
+  "expect_thin": true
+}

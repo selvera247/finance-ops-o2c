@@ -142,7 +142,7 @@ def get_case(case_id: str) -> dict[str, Any]:
     }
 
 
-def get_evidence(case_id: str) -> dict[str, Any]:
+def get_evidence(case_id: str, *, actor: str = "api") -> dict[str, Any]:
     got = get_exception(case_id)
     if got.get("status") != "success":
         return {"status": "not_found", "case_id": case_id}
@@ -163,12 +163,22 @@ def get_evidence(case_id: str) -> dict[str, Any]:
         payment=payment,
         invoices=invoices,
         scored=scored,
+        actor=actor,
     )
     case_store.append_audit(
         case_id,
         "evidence_retrieved",
-        actor="api",
-        detail={"item_count": len(pack.items), "email_enabled": pack.email_enabled},
+        actor=actor,
+        detail={
+            "item_count": len(pack.items),
+            "email_enabled": pack.email_enabled,
+            "email_ids": [
+                i.source_id for i in pack.items if i.source_type == "email"
+            ],
+            "remittance_ids": [
+                i.source_id for i in pack.items if i.source_type == "remittance"
+            ],
+        },
     )
     return {"status": "success", "evidence": pack.model_dump()}
 

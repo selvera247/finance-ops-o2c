@@ -12,6 +12,8 @@ from finance_ops.copilot.config import (
     copilot_email_evidence_enabled,
     copilot_mode,
     demo_apply_enabled,
+    digest_enabled,
+    digest_send_enabled,
     prototype_mode_label,
 )
 from finance_ops.copilot.types import DecisionRequest, HypothesisUpdate, MatchLine
@@ -48,6 +50,8 @@ def copilot_status() -> dict[str, Any]:
         "prototype_mode": prototype_mode_label(),
         "email_evidence": copilot_email_evidence_enabled(),
         "demo_apply": demo_apply_enabled(),
+        "digest_enabled": digest_enabled(),
+        "digest_send": digest_send_enabled(),
         "guidance_only": not demo_apply_enabled(),
         "auto_allow_on_copilot_path": False,
         "modes": {
@@ -57,6 +61,24 @@ def copilot_status() -> dict[str, Any]:
             "D": "COPILOT_MODE=rules_only (skip LLM draft)",
         },
     }
+
+
+@router.get("/digest")
+def get_digest(
+    force: bool = False,
+    sync: bool = False,
+    limit: int | None = None,
+    min_confidence: str | None = None,
+) -> dict[str, Any]:
+    """Optional ranked exception digest (off by default). Use ?force=1 for dry-run."""
+    from finance_ops.copilot.digest import run_digest
+
+    return run_digest(
+        sync_first=sync,
+        force=force,
+        limit=limit,
+        min_confidence=min_confidence,
+    )
 
 
 @router.get("/queue")
@@ -84,8 +106,11 @@ def get_case(case_id: str) -> dict[str, Any]:
 
 
 @router.get("/cases/{case_id}/evidence")
-def get_evidence(case_id: str) -> dict[str, Any]:
-    out = copilot_service.get_evidence(case_id)
+def get_evidence(
+    case_id: str,
+    actor: str = "api",
+) -> dict[str, Any]:
+    out = copilot_service.get_evidence(case_id, actor=actor)
     if out.get("status") == "not_found":
         raise HTTPException(status_code=404, detail=out)
     return out

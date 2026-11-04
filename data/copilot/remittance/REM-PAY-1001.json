@@ -1,0 +1,16 @@
+{
+  "document_id": "REM-DOC-1001",
+  "customer_id": "C-1042",
+  "payment_id": "PAY-1001",
+  "filename": "REM-PAY-1001.pdf",
+  "source_format": "pdf_text",
+  "expected_fields": {
+    "invoice_ids": ["INV-84219"],
+    "payment_id": "PAY-1001",
+    "amount": 1842.5,
+    "currency": "USD",
+    "po_numbers": ["PO-88421"],
+    "customer_id": "C-1042"
+  },
+  "min_confidence": 0.7
+}

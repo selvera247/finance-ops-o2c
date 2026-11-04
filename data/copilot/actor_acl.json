@@ -1,0 +1,12 @@
+{
+  "actors": {
+    "pilot": ["C-1042", "C-4417"],
+    "pilot-acme": ["C-1042"],
+    "reviewer": ["*"],
+    "api": ["*"],
+    "system": ["*"],
+    "test": ["*"],
+    "http-test": ["*"]
+  },
+  "notes": "Fail closed: unknown actors get no customer scopes. '*' means all customers (reviewer / system only)."
+}

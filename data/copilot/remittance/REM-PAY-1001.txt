@@ -1,0 +1,8 @@
+CUSTOMER REMITTANCE ADVICE
+Customer: C-1042 Acme North
+Payment: PAY-1001
+Amount: 1842.50 USD
+Invoice: INV-84219
+PO: PO-88421
+Date: 2026-10-05
+Notes: Wire confirmation — apply full amount to INV-84219.
