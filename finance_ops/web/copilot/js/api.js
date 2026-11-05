@@ -11,11 +11,18 @@
  * @property {typeof fetch} [fetchImpl]
  */
 
+/** Blank localStorage / query tokens must not become Authorization: Bearer "" */
+export function normalizeApiToken(raw) {
+  if (raw == null) return null;
+  const t = String(raw).trim();
+  return t ? t : null;
+}
+
 export class CopilotApi {
   /** @param {CopilotApiOptions} [opts] */
   constructor(opts = {}) {
     this.baseUrl = (opts.baseUrl || "").replace(/\/$/, "");
-    this.token = opts.token ?? null;
+    this.token = normalizeApiToken(opts.token);
     this.fetchImpl = opts.fetchImpl || fetch.bind(globalThis);
   }
 

@@ -165,14 +165,15 @@ def ensure_queue(*, sync: bool = True, force: bool = False) -> dict[str, Any]:
             "retry_after_sec": round(interval - (now - _LAST_SYNC_MONO), 2),
         }
 
-    from finance_ops.copilot.seed import ensure_spike_a_payments
+    from finance_ops.copilot.seed import ensure_demo_payments
 
     # Seed *before* sync_from_warehouse → ensure_schema creates an empty DuckDB
     # that would otherwise shadow fixture fallback and yield payment_count=0.
-    seed_meta = ensure_spike_a_payments(force=False)
+    # Default pack is base (data/*.json / PAY-900x) + Spike A — not Spike A alone.
+    seed_meta = ensure_demo_payments(force=False)
     result = sync_from_warehouse()
     if int(result.get("payment_count") or 0) == 0:
-        seed_meta = ensure_spike_a_payments(force=True)
+        seed_meta = ensure_demo_payments(force=True)
         if seed_meta.get("status") == "success":
             result = sync_from_warehouse()
 
@@ -181,7 +182,8 @@ def ensure_queue(*, sync: bool = True, force: bool = False) -> dict[str, Any]:
     if int(result.get("payment_count") or 0) == 0:
         result["hint"] = (
             "Warehouse has no unmatched payments after Sync. "
-            "Load Spike A (auto-seed) or POST /v1/bootstrap, then Sync again."
+            "Auto-seed the demo pack (COPILOT_DEMO_SEED_PACK=base+spike_a) "
+            "or POST /v1/bootstrap, then Sync again."
         )
         result["needs_review"] = True
     _LAST_SYNC_MONO = time.monotonic()
