@@ -50,12 +50,30 @@ export class CopilotApi {
       err.name = "AbortError";
       throw err;
     }
-    const data = await res.json().catch(() => ({}));
+    // Prefer text→JSON so plain-text 500 bodies ("Internal Server Error") surface
+    // instead of an empty banner when statusText is blank (HTTP/2 / some proxies).
+    const raw = await res.text();
+    let data = {};
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { detail: raw.trim() };
+      }
+    }
     if (!res.ok) {
-      const detail = data.detail?.error || data.detail || data.error || res.statusText;
-      const err = new Error(
-        typeof detail === "string" ? detail : JSON.stringify(detail),
-      );
+      const detail =
+        data.detail?.error ||
+        data.detail ||
+        data.error ||
+        (typeof raw === "string" && raw.trim()) ||
+        res.statusText ||
+        `HTTP ${res.status}`;
+      const message =
+        typeof detail === "string"
+          ? detail.trim() || `HTTP ${res.status}`
+          : JSON.stringify(detail);
+      const err = new Error(message);
       err.status = res.status;
       err.payload = data;
       throw err;

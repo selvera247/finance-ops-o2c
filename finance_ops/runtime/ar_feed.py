@@ -211,7 +211,7 @@ def ingest_erp_payment_csv(
                         }
                     )
     finally:
-        con.close()
+        db.close_connection(con)
 
     if upserted:
         status = "success"

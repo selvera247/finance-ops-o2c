@@ -125,7 +125,7 @@ class GraphStore:
                     [e["source"], e["target"], e.get("type")],
                 )
         finally:
-            con.close()
+            db.close_connection(con)
         return {"status": "success", "backend": "duckdb", "nodes": len(nodes), "edges": len(edges)}
 
     def load(self) -> dict[str, Any]:

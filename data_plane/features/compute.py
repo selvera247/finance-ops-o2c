@@ -58,4 +58,4 @@ def compute_customer_features() -> dict[str, Any]:
         )
         return {"status": "success", "customers": written, "run_id": run_id}
     finally:
-        con.close()
+        db.close_connection(con)

@@ -72,4 +72,4 @@ def ingest_batch(run_id: str | None = None) -> dict[str, Any]:
         )
         return {"run_id": run_id, "status": "success", "counts": counts}
     finally:
-        con.close()
+        db.close_connection(con)
