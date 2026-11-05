@@ -82,8 +82,7 @@ class WarehouseExceptionStore:
         existing_map: dict[str, dict[str, Any]] = {}
         if not exception_ids:
             return existing_map
-        con = db.connect()
-        try:
+        with db.connection() as con:
             for i in range(0, len(exception_ids), 200):
                 chunk = exception_ids[i : i + 200]
                 placeholders = ",".join("?" * len(chunk))
@@ -96,8 +95,6 @@ class WarehouseExceptionStore:
                 for tup in cur.fetchall():
                     rec = dict(zip(cols, tup))
                     existing_map[str(rec["exception_id"])] = rec
-        finally:
-            con.close()
         return existing_map
 
     def replace_row(
@@ -124,8 +121,7 @@ class WarehouseExceptionStore:
     ) -> None:
         from data_plane.warehouse import db
 
-        con = db.connect()
-        try:
+        with db.connection() as con:
             for row, opened_at in rows:
                 eid = row["exception_id"]
                 con.execute("DELETE FROM ar_exceptions WHERE exception_id = ?", [eid])
@@ -134,8 +130,6 @@ class WarehouseExceptionStore:
                     "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     _row_params(row, opened_at=opened_at, now=now),
                 )
-        finally:
-            con.close()
 
     def fetch_by_id(self, exception_id: str) -> dict[str, Any] | None:
         from data_plane.warehouse import db

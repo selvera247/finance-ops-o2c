@@ -36,14 +36,19 @@ export class CaseHeader extends Component {
     }
 
     if (p.error) {
+      const msg = String(p.error).trim() || "Request failed";
       setChildren(
         this.root,
-        el("div", {
-          role: "alert",
-          "data-state": "error",
-          className: "cp-banner cp-banner--danger",
-          text: p.error,
-        }),
+        el(
+          "div",
+          {
+            role: "alert",
+            "data-state": "error",
+            className: "cp-banner cp-banner--danger",
+          },
+          el("span", { className: "cp-banner__title" }, "Error"),
+          msg,
+        ),
       );
       return;
     }

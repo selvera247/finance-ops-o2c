@@ -54,5 +54,5 @@ def flush_stream_to_warehouse() -> dict[str, Any]:
             )
             inserted += 1
     finally:
-        con.close()
+        db.close_connection(con)
     return {"status": "success", "inserted": inserted}

@@ -202,7 +202,7 @@ def load_spike_a(*, replace_customers: bool = False) -> dict[str, Any]:
             "walkthrough": list(SPIKE_A_WALKTHROUGH),
         }
     finally:
-        con.close()
+        db.close_connection(con)
 
 
 def load_base_warehouse(*, run_id: str = "copilot-demo-seed") -> dict[str, Any]:

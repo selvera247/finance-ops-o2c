@@ -173,7 +173,7 @@ def ingest_portal_csv(
             "batch_id": batch_id,
         }
     finally:
-        con.close()
+        db.close_connection(con)
 
 
 def stage_file_to_incoming(portal_id: str, path: str | Path) -> Path:

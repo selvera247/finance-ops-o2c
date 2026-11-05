@@ -424,37 +424,56 @@ export class CopilotWorkbench {
     this.els.detailStatus.textContent = `Opening ${caseId}`;
 
     try {
-      const [c, e, a] = await Promise.all([
-        this.api.case(caseId, { signal }),
-        this.api.evidence(caseId, this.actor, { signal }),
-        this.api.audit(caseId, { signal }),
-      ]);
+      // Case identity first so a warehouse blip on evidence/audit still paints header.
+      const c = await this.api.case(caseId, { signal });
       if (signal.aborted || this.selectedId !== caseId) return;
       this.caseData = c.case || null;
-      this.evidence = e.evidence?.items || [];
-      this.auditEvents = a.audit || [];
-      this.auditMeta = {
-        decision_actor: a.decision_actor,
-        decision_at: a.decision_at,
-        confidence_band: a.confidence_band,
-      };
       this.draftLines = this.caseData?.hypothesis?.lines
         ? this.caseData.hypothesis.lines.map((l) => ({ ...l }))
         : null;
       this.draftNotes = this.caseData?.hypothesis?.raw_notes || "";
       this.detailLoading = false;
-      announce(`Opened case ${caseId}`);
       this._paintDetail();
       this._paintQueue();
+
+      const settled = await Promise.allSettled([
+        this.api.evidence(caseId, this.actor, { signal }),
+        this.api.audit(caseId, { signal }),
+      ]);
+      if (signal.aborted || this.selectedId !== caseId) return;
+
+      const ev = settled[0];
+      const au = settled[1];
+      if (ev.status === "fulfilled") {
+        this.evidence = ev.value.evidence?.items || [];
+      }
+      if (au.status === "fulfilled") {
+        this.auditEvents = au.value.audit || [];
+        this.auditMeta = {
+          decision_actor: au.value.decision_actor,
+          decision_at: au.value.decision_at,
+          confidence_band: au.value.confidence_band,
+        };
+      }
+      const sideErr =
+        (ev.status === "rejected" && ev.reason?.name !== "AbortError" && ev.reason) ||
+        (au.status === "rejected" && au.reason?.name !== "AbortError" && au.reason) ||
+        null;
+      if (sideErr) {
+        this.actionError = String(sideErr.message || sideErr).trim() || "Request failed";
+        announce(this.actionError, "assertive");
+      }
+      announce(`Opened case ${caseId}`);
+      this._paintDetail();
     } catch (err) {
       if (err?.name === "AbortError" || signal.aborted) return;
       this.detailLoading = false;
-      this.detailError = String(err.message || err);
+      const raw = String(err.message || err).trim();
+      this.detailError = raw || `Failed to open case (HTTP ${err.status || "?"})`;
       const payload = err.payload?.detail || err.payload;
       if (
-        typeof this.detailError === "string" &&
-        (this.detailError.includes("cross_customer") ||
-          payload?.error === "cross_customer_denied")
+        this.detailError.includes("cross_customer") ||
+        payload?.error === "cross_customer_denied"
       ) {
         this.detailError = `Cross-customer retrieve denied. ${this.detailError}`;
       }
