@@ -88,7 +88,7 @@ export class CopilotWorkbench {
     this.root.innerHTML = `
       <a class="copilot-skip-link" href="#copilot-detail">Skip to case detail</a>
       <header class="copilot-shell-header">
-        <h1>Cash-App Exception Copilot</h1>
+        <h1 class="copilot-display-title">Cash-App Exception Copilot</h1>
         <span class="meta" id="wb-mode-meta"></span>
         <nav aria-label="Copilot pages">
           <a href="/copilot" aria-current="page">Workbench</a>

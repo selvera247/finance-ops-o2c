@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap");
 
 *,
 *::before,
@@ -7,7 +7,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body.copilot-app {
@@ -17,14 +17,15 @@ body.copilot-app {
   font-family: var(--copilot-font);
   font-size: var(--copilot-fs-md);
   line-height: var(--copilot-lh);
+  /* Soft warm atmosphere — not flat pure white */
   background:
-    radial-gradient(920px 480px at 8% -12%, rgba(47, 158, 138, 0.18), transparent 55%),
-    radial-gradient(720px 420px at 100% 0%, rgba(94, 184, 255, 0.1), transparent 50%),
-    var(--copilot-bg);
+    radial-gradient(900px 520px at 6% -8%, rgba(111, 94, 75, 0.09), transparent 55%),
+    radial-gradient(780px 460px at 100% 0%, rgba(42, 36, 28, 0.05), transparent 52%),
+    linear-gradient(180deg, #f8f5f0 0%, var(--copilot-bg) 42%, #f1ece5 100%);
 }
 
 .copilot-app a {
-  color: var(--copilot-accent);
+  color: var(--copilot-accent-warm);
 }
 
 .copilot-app :focus-visible {
@@ -39,10 +40,10 @@ body.copilot-app {
   z-index: 1000;
   padding: var(--copilot-space-2) var(--copilot-space-3);
   background: var(--copilot-accent);
-  color: #04110e;
+  color: var(--copilot-ink-inverse);
   font-weight: 600;
   text-decoration: none;
-  border-radius: var(--copilot-radius-sm);
+  border-radius: var(--copilot-radius-pill);
 }
 
 .copilot-skip-link:focus {
@@ -52,24 +53,28 @@ body.copilot-app {
 
 .copilot-shell-header {
   min-height: var(--copilot-header-h);
-  padding: var(--copilot-space-3) var(--copilot-space-5);
+  padding: var(--copilot-space-4) var(--copilot-space-6);
   border-bottom: 1px solid var(--copilot-line);
   display: flex;
   gap: var(--copilot-space-4);
   align-items: baseline;
   flex-wrap: wrap;
-  background: rgba(14, 20, 27, 0.72);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 252, 248, 0.78);
+  backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 20;
 }
 
-.copilot-shell-header h1 {
+.copilot-shell-header h1,
+.copilot-display-title {
   margin: 0;
-  font-size: var(--copilot-fs-lg);
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-family: var(--copilot-font-display);
+  font-size: var(--copilot-fs-xl);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--copilot-ink);
+  line-height: 1.15;
 }
 
 .copilot-shell-header .meta {
@@ -80,13 +85,15 @@ body.copilot-app {
 .copilot-shell-header nav {
   margin-left: auto;
   display: flex;
-  gap: var(--copilot-space-3);
+  gap: var(--copilot-space-4);
   font-size: var(--copilot-fs-sm);
+  font-weight: 500;
 }
 
 .copilot-shell-header nav a {
   color: var(--copilot-ink-muted);
   text-decoration: none;
+  transition: color var(--copilot-dur-fast) var(--copilot-ease);
 }
 
 .copilot-shell-header nav a:hover,
@@ -108,8 +115,8 @@ body.copilot-app {
 
 .copilot-queue-col {
   border-right: 1px solid var(--copilot-line);
-  background: rgba(26, 36, 48, 0.55);
-  padding: var(--copilot-space-4);
+  background: rgba(255, 252, 248, 0.45);
+  padding: var(--copilot-space-5);
   max-height: calc(100vh - var(--copilot-header-h));
   overflow: auto;
 }
@@ -123,7 +130,7 @@ body.copilot-app {
 }
 
 .copilot-detail-col {
-  padding: var(--copilot-space-4) var(--copilot-space-5);
+  padding: var(--copilot-space-5) var(--copilot-space-6);
   max-height: calc(100vh - var(--copilot-header-h));
   overflow: auto;
 }
@@ -138,14 +145,18 @@ body.copilot-app {
   background: var(--copilot-panel);
   border: 1px solid var(--copilot-line);
   border-radius: var(--copilot-radius-lg);
-  padding: var(--copilot-space-4);
-  margin-bottom: var(--copilot-space-4);
+  padding: var(--copilot-space-5);
+  margin-bottom: var(--copilot-space-5);
+  box-shadow: var(--copilot-shadow-sm);
+  animation: cp-panel-in var(--copilot-dur) var(--copilot-ease);
 }
 
 .copilot-panel > h2 {
   margin: 0 0 var(--copilot-space-3);
-  font-size: var(--copilot-fs-md);
-  font-weight: 600;
+  font-family: var(--copilot-font-display);
+  font-size: var(--copilot-fs-lg);
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
 .copilot-muted {
@@ -193,7 +204,7 @@ body.copilot-app {
 .copilot-examples-page {
   max-width: 72rem;
   margin: 0 auto;
-  padding: var(--copilot-space-5);
+  padding: var(--copilot-space-6);
 }
 
 .copilot-examples-page > section {
@@ -202,11 +213,30 @@ body.copilot-app {
 
 .copilot-examples-page h2 {
   margin: 0 0 var(--copilot-space-2);
-  font-size: var(--copilot-fs-lg);
+  font-family: var(--copilot-font-display);
+  font-size: var(--copilot-fs-xl);
+  font-weight: 400;
 }
 
 .copilot-examples-grid {
   display: grid;
   gap: var(--copilot-space-4);
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+@keyframes cp-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copilot-panel {
+    animation: none;
+  }
 }
