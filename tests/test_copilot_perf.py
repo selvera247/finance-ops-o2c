@@ -157,7 +157,8 @@ def test_queue_summary_uses_overlay_meta_cache(
     """Second summary list should hit process overlay meta (no full re-parse)."""
     case_id = spike_ready
     copilot.investigate(case_id, actor="perf")
-    first = copilot.list_queue(limit=20, detail="summary")
+    # Use a wide limit so ranking cannot drop the fixture case off the page.
+    first = copilot.list_queue(limit=200, detail="summary")
     assert first["status"] == "success"
     assert any(c["case_id"] == case_id for c in first["cases"])
 
@@ -169,7 +170,7 @@ def test_queue_summary_uses_overlay_meta_cache(
         return real_load(cid)
 
     monkeypatch.setattr(case_store, "load_overlay", _counting_load)
-    second = copilot.list_queue(limit=20, detail="summary")
+    second = copilot.list_queue(limit=200, detail="summary")
     assert second["status"] == "success"
     # Meta cache should satisfy summary path — no disk load for known cases.
     assert case_id not in opens
