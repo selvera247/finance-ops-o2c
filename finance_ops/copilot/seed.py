@@ -92,18 +92,38 @@ def warehouse_unmatched_payment_count() -> int:
 def warehouse_has_payment(payment_id: str) -> bool:
     if not data_config.DUCKDB_PATH.exists():
         return False
+    present = warehouse_payments_present((payment_id,))
+    return payment_id.strip().upper() in present
+
+
+def warehouse_payments_present(payment_ids: tuple[str, ...] | list[str]) -> set[str]:
+    """Batch marker probe — one DuckDB connect for many payment ids."""
+    ids = [p.strip().upper() for p in payment_ids if p and str(p).strip()]
+    if not ids or not data_config.DUCKDB_PATH.exists():
+        return set()
     from data_plane.warehouse import db
 
     db.init_schema()
-    rows = db.query_dicts(
-        "SELECT 1 AS ok FROM payments WHERE UPPER(payment_id) = ? LIMIT 1",
-        [payment_id.strip().upper()],
-    )
-    return bool(rows)
+    found: set[str] = set()
+    # Chunk to stay under parameter limits on large marker sets.
+    for i in range(0, len(ids), 200):
+        chunk = ids[i : i + 200]
+        placeholders = ",".join("?" * len(chunk))
+        rows = db.query_dicts(
+            f"SELECT UPPER(payment_id) AS pid FROM payments "
+            f"WHERE UPPER(payment_id) IN ({placeholders})",
+            chunk,
+        )
+        for row in rows:
+            pid = row.get("pid")
+            if pid:
+                found.add(str(pid).upper())
+    return found
 
 
 def _missing_markers(markers: tuple[str, ...]) -> list[str]:
-    return [pid for pid in markers if not warehouse_has_payment(pid)]
+    present = warehouse_payments_present(markers)
+    return [pid for pid in markers if pid.strip().upper() not in present]
 
 
 def load_spike_a(*, replace_customers: bool = False) -> dict[str, Any]:

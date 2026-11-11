@@ -26,6 +26,7 @@ from finance_ops.copilot.evidence_cache import (
     cache_evidence_pack,
     get_cached_evidence,
     invalidate_evidence,
+    mark_evidence_audited,
 )
 from finance_ops.copilot.investigate import (
     build_evidence_pack,
@@ -45,7 +46,7 @@ from finance_ops.copilot.types import (
 )
 from data_plane import repository as repo
 
-QueueDetail = Literal["summary", "full"]
+QueueDetail = Literal["summary", "full", "digest"]
 
 # Debounce repeated Spike A full syncs (workbench Sync spam / digest+queue).
 # Default 5s in app; tests should pass force=True on ensure_queue setup.
@@ -131,6 +132,10 @@ def _row_to_case_summary(
 ) -> dict[str, Any]:
     """List DTO: same Case keys, heavy nested blobs nulled to cut JSON bloat."""
     hyp = overlay.get("hypothesis") if isinstance(overlay.get("hypothesis"), dict) else {}
+    if "insufficient_data" in overlay and overlay.get("insufficient_data") is not None:
+        insuff = bool(overlay.get("insufficient_data"))
+    else:
+        insuff = bool(hyp.get("insufficient_data"))
     out = _case_row_fields(row, overlay)
     out.update(
         {
@@ -139,10 +144,31 @@ def _row_to_case_summary(
             "guidance": None,
             "payload": {},
             # Additive flag for digest/UI without shipping full hypothesis.
-            "insufficient_data": bool(hyp.get("insufficient_data")),
+            "insufficient_data": insuff,
         }
     )
     return out
+
+
+def _row_to_case_digest(
+    row: dict[str, Any],
+    overlay: dict[str, Any],
+) -> dict[str, Any]:
+    """Digest DTO: summary scalars + hyp lines/band + summary text (no guidance/payload)."""
+    base = _row_to_case_summary(row, overlay)
+    hyp = overlay.get("hypothesis") if isinstance(overlay.get("hypothesis"), dict) else {}
+    summary = overlay.get("summary") if isinstance(overlay.get("summary"), dict) else {}
+    base["hypothesis"] = {
+        "confidence_band": hyp.get("confidence_band") or overlay.get("confidence_band"),
+        "insufficient_data": bool(
+            hyp.get("insufficient_data")
+            if "insufficient_data" in hyp
+            else overlay.get("insufficient_data")
+        ),
+        "lines": hyp.get("lines") or [],
+    }
+    base["summary"] = {"summary": summary.get("summary")} if summary else None
+    return base
 
 
 def _decision_audit_detail(
@@ -173,6 +199,7 @@ def _decision_audit_detail(
         "actor": body.actor,
         "confidence_band": confidence_band,
         "citation_map": citation_map,
+        # Full hyp dumps stay on overlay top-level; audit keeps fingerprints only.
         "raw_hypothesis": raw_hypothesis,
         "edited_hypothesis": edited_hypothesis,
         "guidance": guidance,
@@ -182,6 +209,7 @@ def _decision_audit_detail(
     if guidance:
         detail["demo_apply"] = bool(demo_apply)
         detail["auto_allow_max"] = auto_max
+    # Discovery-minimum audit keeps raw/edited hypothesis blobs on the event.
     return detail
 
 
@@ -247,7 +275,11 @@ def list_queue(
 
     # Small headroom for status filter; avoid always pulling the 200-row ceiling.
     fetch_limit = min(200, max(limit + 25, limit))
-    listed = list_exceptions(status=status, lane=lane, limit=fetch_limit)
+    # Summary/digest ranking only needs rank columns — skip payload JSON parse.
+    row_columns = "full" if detail == "full" else "rank"
+    listed = list_exceptions(
+        status=status, lane=lane, limit=fetch_limit, columns=row_columns
+    )
     rows = list(listed.get("exceptions") or [])
     if status == "open":
         rows = [r for r in rows if str(r.get("status")) in COPILOT_QUEUE_STATUSES]
@@ -255,10 +287,16 @@ def list_queue(
     rows = rows[:limit]
 
     case_ids = [str(r["exception_id"]) for r in rows]
-    overlays = case_store.load_overlays(case_ids)
     if detail == "full":
+        overlays = case_store.load_overlays(case_ids)
         cases = [_row_to_case(r, overlays[str(r["exception_id"])]).model_dump() for r in rows]
+    elif detail == "digest":
+        overlays = case_store.load_overlays(case_ids)
+        cases = [
+            _row_to_case_digest(r, overlays[str(r["exception_id"])]) for r in rows
+        ]
     else:
+        overlays = case_store.load_overlay_metas(case_ids)
         cases = [
             _row_to_case_summary(r, overlays[str(r["exception_id"])]) for r in rows
         ]
@@ -327,21 +365,23 @@ def get_evidence(case_id: str, *, actor: str = "api") -> dict[str, Any]:
     )
     pack_dump = pack.model_dump()
     cache_evidence_pack(case_id, actor=actor, pack=pack_dump)
-    case_store.append_audit(
-        case_id,
-        "evidence_retrieved",
-        actor=actor,
-        detail={
-            "item_count": len(pack.items),
-            "email_enabled": pack.email_enabled,
-            "email_ids": [
-                i.source_id for i in pack.items if i.source_type == "email"
-            ],
-            "remittance_ids": [
-                i.source_id for i in pack.items if i.source_type == "remittance"
-            ],
-        },
-    )
+    # First miss after invalidate still audits; repeat misses (TTL expiry) skip disk RMW.
+    if mark_evidence_audited(case_id):
+        case_store.append_audit(
+            case_id,
+            "evidence_retrieved",
+            actor=actor,
+            detail={
+                "item_count": len(pack.items),
+                "email_enabled": pack.email_enabled,
+                "email_ids": [
+                    i.source_id for i in pack.items if i.source_type == "email"
+                ],
+                "remittance_ids": [
+                    i.source_id for i in pack.items if i.source_type == "remittance"
+                ],
+            },
+        )
     return {"status": "success", "evidence": pack_dump, "cache": "miss"}
 
 
@@ -471,13 +511,36 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
         return {"status": "error", "error": err, "case_id": case_id, "needs_review": True}
 
     row = dict(got["exception"])
-    if body.hypothesis is not None:
-        updated = update_hypothesis(case_id, body.hypothesis, actor=body.actor)
-        if updated.get("status") != "success":
-            return updated
-
     overlay = case_store.load_overlay(case_id)
-    hyp_data = overlay.get("hypothesis")
+    # Inline hyp edit folds into persist_decision below (single overlay write).
+    pending_hyp_edit: MatchHypothesis | None = None
+    if body.hypothesis is not None:
+        existing = overlay.get("hypothesis") or {}
+        pending_hyp_edit = MatchHypothesis(
+            case_id=case_id,
+            payment_id=str(row.get("source_id") or existing.get("payment_id") or ""),
+            customer_id=row.get("customer_id") or existing.get("customer_id"),
+            lines=list(body.hypothesis.lines),
+            citation_map=[
+                Citation.model_validate(c)
+                for c in (existing.get("citation_map") or [])
+            ],
+            confidence_band=body.hypothesis.confidence_band
+            or existing.get("confidence_band")
+            or "medium",
+            model_id=existing.get("model_id"),
+            prompt_version=existing.get("prompt_version"),
+            insufficient_data=len(body.hypothesis.lines) == 0,
+            raw_notes=(
+                body.hypothesis.raw_notes
+                if body.hypothesis.raw_notes is not None
+                else existing.get("raw_notes")
+            ),
+            edited=True,
+        )
+        hyp_data = pending_hyp_edit.model_dump()
+    else:
+        hyp_data = overlay.get("hypothesis")
     if not hyp_data and body.decision in {
         Decision.accept,
         Decision.edit_ready_to_apply,
@@ -497,7 +560,11 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
                 "case_id": case_id,
                 "needs_review": True,
             }
-        hypothesis = MatchHypothesis.model_validate(hyp_data)
+        hypothesis = (
+            pending_hyp_edit
+            if pending_hyp_edit is not None
+            else MatchHypothesis.model_validate(hyp_data)
+        )
         if body.decision == Decision.accept and hypothesis.insufficient_data:
             return {
                 "status": "error",
@@ -507,7 +574,7 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
                 "needs_review": True,
             }
         edited_hypothesis = None
-        if body.decision == Decision.edit_ready_to_apply:
+        if body.decision == Decision.edit_ready_to_apply or pending_hyp_edit is not None:
             hypothesis = hypothesis.model_copy(update={"edited": True})
             edited_hypothesis = hypothesis
 
@@ -627,9 +694,12 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
     new_status = status_for_decision(body.decision)
     row["status"] = new_status
     upsert_exception(row)
-    overlay = case_store.load_overlay(case_id)
-    hyp_data = overlay.get("hypothesis")
-    hyp_obj = MatchHypothesis.model_validate(hyp_data) if hyp_data else None
+    # Reuse overlay loaded above (avoid second disk read on reject path).
+    if pending_hyp_edit is not None:
+        hyp_obj = pending_hyp_edit
+    else:
+        hyp_data = overlay.get("hypothesis")
+        hyp_obj = MatchHypothesis.model_validate(hyp_data) if hyp_data else None
     raw_hyp = overlay.get("raw_hypothesis")
     case_store.persist_decision(
         case_id,
@@ -642,6 +712,7 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
         ),
         raw_hypothesis=raw_hyp if isinstance(raw_hyp, dict) else None,
         edited_hypothesis=hyp_obj.model_dump() if hyp_obj else None,
+        hypothesis=pending_hyp_edit,
         audit_detail=_decision_audit_detail(
             case_id=case_id,
             row=row,
@@ -675,17 +746,23 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
     }
 
 
-def get_audit(case_id: str) -> dict[str, Any]:
+def get_audit(case_id: str, *, limit: int | None = 50) -> dict[str, Any]:
     got = get_exception(case_id)
     overlay = case_store.load_overlay(case_id)
     if got.get("status") != "success":
         # Still return overlay audit if any (case may be synthetic)
         if not overlay.get("audit"):
             return {"status": "not_found", "case_id": case_id}
+    audit = list(overlay.get("audit") or [])
+    total = len(audit)
+    if limit is not None and limit >= 0:
+        audit = audit[-limit:] if limit else []
     return {
         "status": "success",
         "case_id": case_id,
-        "audit": overlay.get("audit") or [],
+        "audit": audit,
+        "audit_total": total,
+        "audit_limit": limit,
         "last_decision": overlay.get("last_decision"),
         "reason_code": overlay.get("reason_code"),
         "decision_actor": overlay.get("decision_actor"),

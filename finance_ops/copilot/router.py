@@ -92,9 +92,16 @@ def get_queue(
     """Ranked Copilot exception queue (aging × amount × confidence).
 
     detail=summary (default) omits hypothesis/summary/guidance/payload blobs.
-    detail=full returns the previous fat Case shape (used by digest).
+    detail=digest returns summary + hyp lines/summary text (digest path).
+    detail=full returns the previous fat Case shape.
     """
-    detail_norm = "full" if str(detail).strip().lower() == "full" else "summary"
+    raw = str(detail).strip().lower()
+    if raw == "full":
+        detail_norm = "full"
+    elif raw == "digest":
+        detail_norm = "digest"
+    else:
+        detail_norm = "summary"
     return copilot_service.list_queue(
         status=status or None,
         lane=lane,
@@ -181,8 +188,14 @@ def post_decision(
 
 
 @router.get("/cases/{case_id}/audit")
-def get_audit(case_id: str) -> dict[str, Any]:
-    out = copilot_service.get_audit(case_id)
+def get_audit(case_id: str, limit: int = 50) -> dict[str, Any]:
+    """Return recent audit events (default last 50). Pass limit=0 for none; omit cap via limit=-1."""
+    audit_limit: int | None
+    if limit < 0:
+        audit_limit = None
+    else:
+        audit_limit = min(int(limit), 500)
+    out = copilot_service.get_audit(case_id, limit=audit_limit)
     if out.get("status") == "not_found":
         raise HTTPException(status_code=404, detail=out)
     return out

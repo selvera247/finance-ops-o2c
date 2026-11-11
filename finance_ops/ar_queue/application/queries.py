@@ -22,19 +22,23 @@ def list_exceptions(
     status: str | None = "open",
     lane: str | None = None,
     limit: int = 50,
+    columns: str = "full",
     store: WarehouseExceptionStore | None = None,
     cache: TtlCacheAdapter | None = None,
 ) -> dict[str, Any]:
     store = store or DEFAULT_EXCEPTION_STORE
     cache = cache or DEFAULT_QUEUE_CACHE
     limit = max(1, min(int(limit), 200))
-    cache_key = f"ar:exceptions:list:{status or 'any'}:{lane or 'any'}:{limit}"
+    cols = "rank" if columns == "rank" else "full"
+    cache_key = (
+        f"ar:exceptions:list:{status or 'any'}:{lane or 'any'}:{limit}:{cols}"
+    )
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
     store.ensure_schema()
-    rows = store.list_rows(status=status, lane=lane, limit=limit)
+    rows = store.list_rows(status=status, lane=lane, limit=limit, columns=cols)
     result = {
         "status": "success",
         "count": len(rows),

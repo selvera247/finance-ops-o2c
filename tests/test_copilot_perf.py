@@ -149,3 +149,169 @@ def test_decide_single_overlay_write(
     assert overlay.get("guidance")
     assert overlay.get("last_decision") == "accept"
     assert any(e.get("event") == "decision" for e in overlay.get("audit") or [])
+
+
+def test_queue_summary_uses_overlay_meta_cache(
+    spike_ready: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second summary list should hit process overlay meta (no full re-parse)."""
+    case_id = spike_ready
+    copilot.investigate(case_id, actor="perf")
+    # Use a wide limit so ranking cannot drop the fixture case off the page.
+    first = copilot.list_queue(limit=200, detail="summary")
+    assert first["status"] == "success"
+    assert any(c["case_id"] == case_id for c in first["cases"])
+
+    opens: list[str] = []
+    real_load = case_store.load_overlay
+
+    def _counting_load(cid: str) -> dict:
+        opens.append(cid)
+        return real_load(cid)
+
+    monkeypatch.setattr(case_store, "load_overlay", _counting_load)
+    second = copilot.list_queue(limit=200, detail="summary")
+    assert second["status"] == "success"
+    # Meta cache should satisfy summary path — no disk load for known cases.
+    assert case_id not in opens
+    row = next(c for c in second["cases"] if c["case_id"] == case_id)
+    assert "insufficient_data" in row
+    assert row.get("hypothesis") is None
+
+
+def test_queue_rank_columns_omit_payload(spike_ready: str) -> None:
+    from finance_ops.ar_queue.application.queries import list_exceptions
+
+    ranked = list_exceptions(status="open", lane="cash_app", limit=20, columns="rank")
+    assert ranked["status"] == "success"
+    assert ranked["count"] >= 1
+    for row in ranked["exceptions"]:
+        assert "exception_id" in row
+        assert "amount" in row
+        assert "match_score" in row
+        assert "payload" not in row or row.get("payload") in (None, {}, [])
+        assert "payload_json" not in row
+
+
+def test_evidence_audit_once_per_invalidate(spike_ready: str) -> None:
+    case_id = spike_ready
+    invalidate_evidence(case_id)
+    first = copilot.get_evidence(case_id, actor="perf")
+    assert first.get("cache") == "miss"
+    # Force rebuild without invalidate — should still skip second evidence_retrieved.
+    from finance_ops.copilot import evidence_cache as ecache
+
+    ecache._CACHE.clear()
+    second = copilot.get_evidence(case_id, actor="perf")
+    assert second.get("cache") == "miss"
+    overlay = case_store.load_overlay(case_id)
+    events = [e.get("event") for e in (overlay.get("audit") or [])]
+    assert events.count("evidence_retrieved") == 1
+
+
+def test_audit_limit_returns_tail(spike_ready: str) -> None:
+    case_id = spike_ready
+    copilot.investigate(case_id, actor="perf")
+    for _ in range(3):
+        copilot.get_evidence(case_id, actor="perf")
+    limited = copilot.get_audit(case_id, limit=1)
+    assert limited["status"] == "success"
+    assert len(limited["audit"]) == 1
+    assert limited["audit_total"] >= 1
+    assert limited["audit_limit"] == 1
+    full = copilot.get_audit(case_id, limit=None)
+    assert len(full["audit"]) == full["audit_total"]
+
+
+def test_decide_inline_hypothesis_single_write(
+    spike_ready: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from finance_ops.copilot.types import (
+        Decision,
+        DecisionRequest,
+        HypothesisUpdate,
+        MatchLine,
+    )
+
+    case_id = spike_ready
+    inv = copilot.investigate(case_id, actor="perf")
+    hyp = inv.get("hypothesis") or {}
+    lines = hyp.get("lines") or []
+    if not lines:
+        pytest.skip("no lines to edit inline")
+
+    writes: list[str] = []
+    real_save = case_store.save_overlay
+
+    def _counting_save(cid: str, data: dict) -> dict:
+        writes.append(cid)
+        return real_save(cid, data)
+
+    monkeypatch.setattr(case_store, "save_overlay", _counting_save)
+    out = copilot.decide(
+        case_id,
+        DecisionRequest(
+            decision=Decision.edit_ready_to_apply,
+            actor="perf",
+            hypothesis=HypothesisUpdate(
+                lines=[MatchLine.model_validate(lines[0])],
+                raw_notes="perf inline",
+            ),
+        ),
+    )
+    assert out["status"] == "success"
+    assert writes == [case_id]
+
+
+def test_digest_detail_lean(spike_ready: str) -> None:
+    queue = copilot.list_queue(limit=10, detail="digest")
+    assert queue["detail"] == "digest"
+    assert queue["count"] >= 1
+    for case in queue["cases"]:
+        assert case.get("guidance") is None
+        assert case.get("payload") == {}
+        hyp = case.get("hypothesis")
+        assert hyp is None or isinstance(hyp, dict)
+        if isinstance(hyp, dict):
+            assert "lines" in hyp
+            assert "confidence_band" in hyp or hyp.get("confidence_band") is None
+
+
+def test_queue_list_latency_smoke(spike_ready: str) -> None:
+    """Capture summary vs full wall time for the optimization report."""
+    import time
+
+    # Warm schema / overlays.
+    copilot.list_queue(limit=50, detail="summary")
+    t0 = time.perf_counter()
+    for _ in range(5):
+        copilot.list_queue(limit=50, detail="summary")
+    summary_ms = (time.perf_counter() - t0) / 5 * 1000
+    t1 = time.perf_counter()
+    for _ in range(5):
+        copilot.list_queue(limit=50, detail="full")
+    full_ms = (time.perf_counter() - t1) / 5 * 1000
+    # Summary should not be slower than full (allow tiny noise).
+    assert summary_ms <= full_ms * 1.5 + 5.0
+    # Expose numbers in assertion message for report capture.
+    assert summary_ms >= 0, f"summary={summary_ms:.2f}ms full={full_ms:.2f}ms"
+    print(f"PERF queue_list summary_ms={summary_ms:.2f} full_ms={full_ms:.2f}")
+
+
+def test_slim_audit_detail_drops_hyp_blobs() -> None:
+    slim = case_store.slim_audit_detail(
+        {
+            "confidence_band": "high",
+            "raw_hypothesis": {
+                "confidence_band": "high",
+                "lines": [{"invoice_id": "INV-1"}],
+            },
+            "edited_hypothesis": {"lines": []},
+            "citation_map": [{"source_id": "pay-1", "label": "x"}],
+        }
+    )
+    assert "raw_hypothesis" not in slim
+    assert "edited_hypothesis" not in slim
+    assert slim.get("hyp_confidence_band") == "high"
+    assert slim.get("hyp_line_count") == 1
+    assert slim.get("citation_map") == ["pay-1"]

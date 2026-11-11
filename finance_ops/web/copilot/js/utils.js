@@ -226,11 +226,12 @@ export function jsonDetailsBlock(payload, opts = {}) {
   const id = `cp-json-details-${++_jsonDetailsSeq}`;
   const showLabel = opts.buttonLabel || "Details";
   const hideLabel = opts.hideLabel || "Hide details";
+  // Defer JSON.stringify until first expand — collapsed Details is the common path.
+  let materialized = false;
   const pre = el("pre", {
     id,
     className: "cp-json-details__pre",
     hidden: true,
-    text: formatJsonForDisplay(payload),
   });
   const btn = el(
     "button",
@@ -243,8 +244,15 @@ export function jsonDetailsBlock(payload, opts = {}) {
         const open = btn.getAttribute("aria-expanded") === "true";
         const next = !open;
         btn.setAttribute("aria-expanded", next ? "true" : "false");
-        if (next) pre.removeAttribute("hidden");
-        else pre.setAttribute("hidden", "");
+        if (next) {
+          if (!materialized) {
+            pre.textContent = formatJsonForDisplay(payload);
+            materialized = true;
+          }
+          pre.removeAttribute("hidden");
+        } else {
+          pre.setAttribute("hidden", "");
+        }
         btn.textContent = next ? hideLabel : showLabel;
       },
     },

@@ -1,10 +1,13 @@
 /**
  * Case audit timeline — inputs → retrieval → draft → edits → decision.
+ * Caps visible events; JSON detail lazy via collapsed Details.
  * @module components/AuditTimeline
  */
 
-import { Component, el, formatJsonForDisplay, setChildren } from "../utils.js";
+import { Component, el, jsonDetailsBlock, setChildren } from "../utils.js";
 import { Skeleton } from "./shared.js";
+
+const DEFAULT_VISIBLE = 20;
 
 /**
  * @typedef {Object} AuditTimelineProps
@@ -15,6 +18,8 @@ import { Skeleton } from "./shared.js";
  * @property {boolean} [loading]
  * @property {string|null} [error]
  * @property {string} [ariaLabel]
+ * @property {number} [visibleCount]
+ * @property {() => void} [onShowMore]
  */
 
 export class AuditTimeline extends Component {
@@ -71,14 +76,21 @@ export class AuditTimeline extends Component {
       return;
     }
 
+    // Show the most recent N events (audit is chronological).
+    const visibleCap =
+      p.visibleCount != null ? p.visibleCount : DEFAULT_VISIBLE;
+    const start = Math.max(0, events.length - visibleCap);
+    const slice = events.slice(start);
+
     const list = el(
       "ol",
       {
         className: "cp-audit",
         "aria-label": label,
         "data-state": "ready",
+        start: start + 1,
       },
-      ...events.map((ev) =>
+      ...slice.map((ev) =>
         el(
           "li",
           { className: "cp-audit__item" },
@@ -89,15 +101,31 @@ export class AuditTimeline extends Component {
             `${ev.event || "event"}${ev.actor ? ` · ${ev.actor}` : ""}`,
           ),
           ev.detail && Object.keys(ev.detail).length
-            ? el("pre", {
+            ? jsonDetailsBlock(ev.detail, {
                 className: "cp-audit__detail",
-                text: formatJsonForDisplay(ev.detail),
+                buttonLabel: "Event detail",
               })
             : null,
         ),
       ),
     );
 
-    setChildren(this.root, meta, list);
+    const nodes = [meta, list];
+    if (start > 0) {
+      nodes.push(
+        el(
+          "button",
+          {
+            type: "button",
+            className: "cp-btn cp-btn--ghost cp-btn--sm",
+            "aria-label": `Show older audit events (${start} hidden)`,
+            onClick: () => p.onShowMore?.(),
+          },
+          `Show older (${start} hidden)`,
+        ),
+      );
+    }
+
+    setChildren(this.root, ...nodes);
   }
 }

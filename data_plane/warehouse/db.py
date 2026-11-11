@@ -21,6 +21,10 @@ _LOCK = threading.RLock()
 # DuckDBPyConnection rejects setattr — track connect()-held locks by id().
 _CONNECT_HELD: set[int] = set()
 _CONNECT_HELD_GUARD = threading.Lock()
+# Avoid re-reading/executing schema.sql on every Sync / list_exceptions call.
+# Keyed by warehouse path so tests that swap DUCKDB_PATH still re-init.
+_SCHEMA_READY_FOR: str | None = None
+_SCHEMA_GUARD = threading.Lock()
 
 
 @contextmanager
@@ -72,11 +76,31 @@ def close_connection(con: duckdb.DuckDBPyConnection | None) -> None:
 
 
 def init_schema(con: duckdb.DuckDBPyConnection | None = None) -> None:
+    global _SCHEMA_READY_FOR
+    path_key = str(data_config.DUCKDB_PATH.resolve())
+    # Caller-provided connection always applies (bootstrap / tests may share con).
     if con is not None:
         con.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+        with _SCHEMA_GUARD:
+            _SCHEMA_READY_FOR = path_key
         return
+    with _SCHEMA_GUARD:
+        if (
+            _SCHEMA_READY_FOR == path_key
+            and data_config.DUCKDB_PATH.exists()
+        ):
+            return
     with connection() as owned:
         owned.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+    with _SCHEMA_GUARD:
+        _SCHEMA_READY_FOR = path_key
+
+
+def reset_schema_memo_for_tests() -> None:
+    """Test helper — drop process schema memo after wiping the warehouse file."""
+    global _SCHEMA_READY_FOR
+    with _SCHEMA_GUARD:
+        _SCHEMA_READY_FOR = None
 
 
 def query_dicts(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:

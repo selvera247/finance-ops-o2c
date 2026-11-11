@@ -1,7 +1,8 @@
 /**
  * Copilot workbench composition — wires components to /v1/copilot/* APIs.
  * Hot-path notes: abort in-flight case fetches, reuse investigate payload,
- * avoid queue reload on every case open, split queue vs detail paints.
+ * avoid queue reload on every case open, split queue vs detail paints,
+ * stable handler refs (unlock Component.update shallow-equal), parallel openCase.
  * @module workbench
  */
 
@@ -22,6 +23,9 @@ import {
 import { announce, debounce, isInsufficient } from "./utils.js";
 
 const QUEUE_PAGE = 50;
+const EVIDENCE_PAGE = 20;
+const AUDIT_PAGE = 20;
+const CASE_CACHE_MAX = 24;
 
 /**
  * @typedef {Object} WorkbenchOptions
@@ -60,6 +64,8 @@ export class CopilotWorkbench {
     /** @type {string|null} */
     this.syncStatusText = null;
     this.queueVisible = QUEUE_PAGE;
+    this.evidenceVisible = EVIDENCE_PAGE;
+    this.auditVisible = AUDIT_PAGE;
     this.detailLoading = false;
     this.detailError = null;
     this.investigating = false;
@@ -80,6 +86,39 @@ export class CopilotWorkbench {
     /** @type {AbortController|null} */
     this._queueAbort = null;
     this._syncDebounced = debounce(() => this.refreshQueue(true), 400);
+
+    /** @type {Map<string, {caseData: any, evidence: any[], auditEvents: any[], auditMeta: object, ts: number}>} */
+    this._caseCache = new Map();
+
+    // Stable handler refs — Component.update shallow-equal compares functions by identity.
+    this._onSelectCase = (id) => this.openCase(id);
+    this._onShowMoreQueue = () => {
+      this.queueVisible += QUEUE_PAGE;
+      this._paintQueue();
+    };
+    this._onShowMoreEvidence = () => {
+      this.evidenceVisible += EVIDENCE_PAGE;
+      this._paintDetail();
+    };
+    this._onShowMoreAudit = () => {
+      this.auditVisible += AUDIT_PAGE;
+      this._paintDetail();
+    };
+    this._onInvestigate = () => this.investigate();
+    this._onDecision = (d, r) => this.decide(d, r);
+    this._onReasonChange = (kind, value) => {
+      this.reasons[kind] = value;
+    };
+    this._onCitationClick = (sid) => {
+      const ok = jumpToEvidence(sid, this.root);
+      if (!ok) announce(`Evidence source not found: ${sid}`, "assertive");
+    };
+    this._onHypChange = ({ lines, raw_notes }) => {
+      this.draftLines = lines;
+      this.draftNotes = raw_notes;
+    };
+    this._onSaveHypothesis = () => this.saveHypothesis();
+    this._onSyncClick = () => this._syncDebounced();
 
     this._mount();
   }
@@ -172,28 +211,35 @@ export class CopilotWorkbench {
   }
 
   _paintSyncBar() {
-    this.els.sync.innerHTML = "";
-    const row = document.createElement("div");
-    row.className = "copilot-row";
-    row.style.gap = "0.75rem";
-    row.style.alignItems = "center";
-    row.style.flexWrap = "wrap";
-    const btnMount = document.createElement("div");
-    row.appendChild(btnMount);
-    if (this.syncStatusText) {
-      const meta = document.createElement("span");
-      meta.className = "meta";
-      meta.setAttribute("role", "status");
-      meta.textContent = this.syncStatusText;
-      row.appendChild(meta);
+    if (!this._syncBtn) {
+      this.els.sync.innerHTML = "";
+      const row = document.createElement("div");
+      row.className = "copilot-row";
+      row.style.gap = "0.75rem";
+      row.style.alignItems = "center";
+      row.style.flexWrap = "wrap";
+      const btnMount = document.createElement("div");
+      row.appendChild(btnMount);
+      this._syncMeta = document.createElement("span");
+      this._syncMeta.className = "meta";
+      this._syncMeta.setAttribute("role", "status");
+      row.appendChild(this._syncMeta);
+      this.els.sync.appendChild(row);
+      this._syncBtn = new Button(btnMount, {
+        label: "Sync + refresh",
+        ariaLabel: "Sync exception queue from warehouse",
+        disabled: false,
+        onClick: this._onSyncClick,
+      });
+      this._syncBtn.render();
     }
-    this.els.sync.appendChild(row);
-    new Button(btnMount, {
+    this._syncBtn.update({
       label: this.queueLoading ? "Syncing…" : "Sync + refresh",
-      ariaLabel: "Sync exception queue from warehouse",
       disabled: this.queueLoading,
-      onClick: () => this._syncDebounced(),
-    }).render();
+      onClick: this._onSyncClick,
+    });
+    this._syncMeta.textContent = this.syncStatusText || "";
+    this._syncMeta.hidden = !this.syncStatusText;
   }
 
   async bootstrap() {
@@ -227,11 +273,8 @@ export class CopilotWorkbench {
       selectedId: this.selectedId,
       visibleCount: this.queueVisible,
       pageSize: QUEUE_PAGE,
-      onSelect: (id) => this.openCase(id),
-      onShowMore: () => {
-        this.queueVisible += QUEUE_PAGE;
-        this._paintQueue();
-      },
+      onSelect: this._onSelectCase,
+      onShowMore: this._onShowMoreQueue,
     });
   }
 
@@ -263,11 +306,9 @@ export class CopilotWorkbench {
       rejectReason: this.reasons.reject,
       escalateReason: this.reasons.escalate,
       needInfoReason: this.reasons.need_info,
-      onInvestigate: () => this.investigate(),
-      onDecision: (d, r) => this.decide(d, r),
-      onReasonChange: (kind, value) => {
-        this.reasons[kind] = value;
-      },
+      onInvestigate: this._onInvestigate,
+      onDecision: this._onDecision,
+      onReasonChange: this._onReasonChange,
     });
 
     this.hypothesisView.update({
@@ -276,15 +317,9 @@ export class CopilotWorkbench {
       loading: this.detailLoading && !workingHyp,
       disabled: this.actionBusy || !this.caseData || this.detailLoading,
       editable: Boolean(this.caseData) && !this.detailLoading && !this.detailError,
-      onCitationClick: (sid) => {
-        const ok = jumpToEvidence(sid, this.root);
-        if (!ok) announce(`Evidence source not found: ${sid}`, "assertive");
-      },
-      onChange: ({ lines, raw_notes }) => {
-        this.draftLines = lines;
-        this.draftNotes = raw_notes;
-      },
-      onSave: () => this.saveHypothesis(),
+      onCitationClick: this._onCitationClick,
+      onChange: this._onHypChange,
+      onSave: this._onSaveHypothesis,
     });
 
     this.guidanceView.update({
@@ -294,8 +329,10 @@ export class CopilotWorkbench {
 
     this.evidenceView.update({
       items: this.detailError ? [] : this.evidence,
-      loading: this.detailLoading,
+      loading: this.detailLoading && !this.evidence.length,
       thinEvidence: insuff,
+      visibleCount: this.evidenceVisible,
+      onShowMore: this._onShowMoreEvidence,
     });
 
     this.auditView.update({
@@ -303,7 +340,9 @@ export class CopilotWorkbench {
       decisionActor: this.detailError ? undefined : this.auditMeta.decision_actor,
       decisionAt: this.detailError ? undefined : this.auditMeta.decision_at,
       confidenceBand: this.detailError ? undefined : this.auditMeta.confidence_band,
-      loading: this.detailLoading,
+      loading: this.detailLoading && !this.auditEvents.length,
+      visibleCount: this.auditVisible,
+      onShowMore: this._onShowMoreAudit,
     });
   }
 
@@ -317,6 +356,19 @@ export class CopilotWorkbench {
     this._paintQueue();
     this._paintDetail();
     this._paintDigest();
+  }
+
+  /**
+   * @param {string} caseId
+   * @param {{caseData?: any, evidence?: any[], auditEvents?: any[], auditMeta?: object}} snap
+   */
+  _rememberCase(caseId, snap) {
+    this._caseCache.delete(caseId);
+    this._caseCache.set(caseId, { ...snap, ts: Date.now() });
+    while (this._caseCache.size > CASE_CACHE_MAX) {
+      const oldest = this._caseCache.keys().next().value;
+      this._caseCache.delete(oldest);
+    }
   }
 
   /**
@@ -420,37 +472,62 @@ export class CopilotWorkbench {
     this.actionError = null;
     this.draftLines = null;
     this.draftNotes = "";
-    // Drop prior case payloads so skeletons show and we never paint A under B.
-    this.caseData = null;
-    this.evidence = [];
-    this.auditEvents = [];
-    this.auditMeta = {};
+    this.evidenceVisible = EVIDENCE_PAGE;
+    this.auditVisible = AUDIT_PAGE;
+
+    // Optimistic header from queue summary — paint before any network.
+    const queueRow = this.cases.find((c) => c.case_id === caseId) || null;
+    const cached = this._caseCache.get(caseId) || null;
+    if (cached) {
+      this.caseData = cached.caseData;
+      this.evidence = cached.evidence || [];
+      this.auditEvents = cached.auditEvents || [];
+      this.auditMeta = cached.auditMeta || {};
+      this.draftLines = this.caseData?.hypothesis?.lines
+        ? this.caseData.hypothesis.lines.map((l) => ({ ...l }))
+        : null;
+      this.draftNotes = this.caseData?.hypothesis?.raw_notes || "";
+    } else if (queueRow) {
+      this.caseData = { ...queueRow };
+      this.evidence = [];
+      this.auditEvents = [];
+      this.auditMeta = {};
+    } else {
+      this.caseData = null;
+      this.evidence = [];
+      this.auditEvents = [];
+      this.auditMeta = {};
+    }
+
     // Selection highlight only — do not refetch the whole queue.
     this._paintQueue();
     this._paintDetail();
     this.els.detailStatus.textContent = `Opening ${caseId}`;
 
     try {
-      // Case identity first so a warehouse blip on evidence/audit still paints header.
-      const c = await this.api.case(caseId, { signal });
-      if (signal.aborted || this.selectedId !== caseId) return;
-      this.caseData = c.case || null;
-      this.draftLines = this.caseData?.hypothesis?.lines
-        ? this.caseData.hypothesis.lines.map((l) => ({ ...l }))
-        : null;
-      this.draftNotes = this.caseData?.hypothesis?.raw_notes || "";
-      // Keep detailLoading until evidence/audit settle so prior panes stay empty.
-      this._paintDetail();
-      this._paintQueue();
-
+      // Fire case + evidence + audit together (one wave) — cut sequential RTT.
       const settled = await Promise.allSettled([
+        this.api.case(caseId, { signal }),
         this.api.evidence(caseId, this.actor, { signal }),
         this.api.audit(caseId, { signal }),
       ]);
       if (signal.aborted || this.selectedId !== caseId) return;
 
-      const ev = settled[0];
-      const au = settled[1];
+      const cRes = settled[0];
+      const ev = settled[1];
+      const au = settled[2];
+
+      if (cRes.status === "rejected") {
+        if (cRes.reason?.name === "AbortError") return;
+        throw cRes.reason;
+      }
+      const c = cRes.value;
+      this.caseData = c.case || this.caseData;
+      this.draftLines = this.caseData?.hypothesis?.lines
+        ? this.caseData.hypothesis.lines.map((l) => ({ ...l }))
+        : null;
+      this.draftNotes = this.caseData?.hypothesis?.raw_notes || "";
+
       if (ev.status === "fulfilled") {
         this.evidence = ev.value.evidence?.items || [];
       } else if (ev.reason?.name !== "AbortError") {
@@ -476,6 +553,12 @@ export class CopilotWorkbench {
         announce(this.actionError, "assertive");
       }
       this.detailLoading = false;
+      this._rememberCase(caseId, {
+        caseData: this.caseData,
+        evidence: this.evidence,
+        auditEvents: this.auditEvents,
+        auditMeta: this.auditMeta,
+      });
       announce(`Opened case ${caseId}`);
       this._paintDetail();
     } catch (err) {
@@ -525,6 +608,7 @@ export class CopilotWorkbench {
       }
       if (out.evidence?.items) {
         this.evidence = out.evidence.items;
+        this.evidenceVisible = EVIDENCE_PAGE;
       }
       this._patchCaseRow(caseId, {
         confidence_band: out.hypothesis?.confidence_band,
@@ -535,6 +619,7 @@ export class CopilotWorkbench {
         const a = await this.api.audit(caseId);
         if (this.selectedId === caseId) {
           this.auditEvents = a.audit || [];
+          this.auditVisible = AUDIT_PAGE;
           this.auditMeta = {
             decision_actor: a.decision_actor,
             decision_at: a.decision_at,
@@ -544,14 +629,21 @@ export class CopilotWorkbench {
       } catch {
         /* non-fatal */
       }
+      this._rememberCase(caseId, {
+        caseData: this.caseData,
+        evidence: this.evidence,
+        auditEvents: this.auditEvents,
+        auditMeta: this.auditMeta,
+      });
       announce("Investigation complete");
-      this._paintDetail();
     } catch (err) {
       this.actionError = String(err.message || err);
       announce(this.actionError, "assertive");
     } finally {
       this.investigating = false;
-      this._paintDetail();
+      if (this.selectedId === caseId) {
+        this._paintDetail();
+      }
     }
   }
 
@@ -578,7 +670,6 @@ export class CopilotWorkbench {
         this.caseData = { ...this.caseData, hypothesis: out.hypothesis };
       }
       announce("Hypothesis saved");
-      this._paintDetail();
     } catch (err) {
       if (this.selectedId !== caseId) return;
       this.actionError = String(err.message || err);
@@ -641,15 +732,22 @@ export class CopilotWorkbench {
       }
       this._patchCaseRow(caseId, {
         status: out.case_status,
+        last_decision: out.decision,
+        reason_code: out.reason_code || reasonCode,
       });
       if (out.guidance) {
         announce("Guidance packet ready");
       } else {
         announce(`Decision recorded: ${decision}`);
       }
-      // One queue refresh after mutation (not openCase + refresh).
-      await this.refreshQueue(false);
-      if (this.selectedId !== caseId) return;
+      // Patch-only when status stays in open set; full refresh when terminal / reorder risk.
+      const terminal = ["resolved", "rejected", "closed"].includes(
+        String(out.case_status || ""),
+      );
+      if (terminal) {
+        await this.refreshQueue(false);
+        if (this.selectedId !== caseId) return;
+      }
       try {
         const a = await this.api.audit(caseId);
         if (this.selectedId === caseId) {
@@ -663,7 +761,12 @@ export class CopilotWorkbench {
       } catch {
         /* non-fatal */
       }
-      this._paintDetail();
+      this._rememberCase(caseId, {
+        caseData: this.caseData,
+        evidence: this.evidence,
+        auditEvents: this.auditEvents,
+        auditMeta: this.auditMeta,
+      });
     } catch (err) {
       if (this.selectedId !== caseId) return;
       this.actionError = String(err.message || err);
