@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from finance_ops.ar_queue.domain.serialize import clean_row
+
+
+def _token_in_reference(token: str, ref_upper: str) -> bool:
+    """Case-folded token match with boundaries (avoids INV-1 matching INV-10)."""
+    t = (token or "").strip().upper()
+    if not t or not ref_upper:
+        return False
+    return (
+        re.search(rf"(?<![A-Z0-9-]){re.escape(t)}(?![A-Z0-9-])", ref_upper) is not None
+    )
 
 
 def score_against_invoices(
@@ -17,10 +28,12 @@ def score_against_invoices(
     ref = (payment.get("reference") or "").upper()
     for inv in invoices:
         score, reasons = 0.0, []
-        if inv["invoice_id"] in ref:
+        inv_id = str(inv.get("invoice_id") or "")
+        if _token_in_reference(inv_id, ref):
             score += 0.7
             reasons.append("invoice_id_in_reference")
-        if inv.get("po_number") and str(inv["po_number"]) in ref:
+        po = inv.get("po_number")
+        if po and _token_in_reference(str(po), ref):
             score += 0.4
             reasons.append("po_in_reference")
         inv_amt = float(inv["amount"] or 0)

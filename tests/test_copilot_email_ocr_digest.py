@@ -51,6 +51,8 @@ def test_actor_acl_fail_closed() -> None:
     assert actor_may_access_customer("unknown-actor", "C-1042") is False
     assert actor_may_access_customer(None, "C-1042") is False
     assert actor_may_access_customer("reviewer", "C-2081") is True
+    # Workbench UI default actor must not silently deny Mode B email.
+    assert actor_may_access_customer("workbench", "C-1042") is True
 
 
 def test_email_retrieve_same_customer_only(monkeypatch: pytest.MonkeyPatch) -> None:
