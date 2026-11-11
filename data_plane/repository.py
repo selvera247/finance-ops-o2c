@@ -130,10 +130,25 @@ def apply_payment_match(payment_id: str, invoice_id: str) -> dict[str, Any]:
         from data_plane.warehouse import db
 
         db.init_schema()
+        # Match get_payment's UPPER() lookup — stored ids may differ in case.
         db.execute(
-            "UPDATE payments SET matched_invoice_id = ?, status = ? WHERE payment_id = ?",
+            "UPDATE payments SET matched_invoice_id = ?, status = ? "
+            "WHERE UPPER(payment_id) = ?",
             [invoice_id, "matched", payment_id],
         )
+        verified = get_payment(payment_id)
+        if (
+            not verified
+            or str(verified.get("status") or "").lower() != "matched"
+            or str(verified.get("matched_invoice_id") or "").upper() != invoice_id
+        ):
+            return {
+                "ok": False,
+                "error": "payment_not_updated",
+                "payment_id": payment_id,
+                "invoice_id": invoice_id,
+                "backends": backends,
+            }
         backends.append("duckdb")
 
     if mode == "bigquery":

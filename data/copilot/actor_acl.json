@@ -6,7 +6,8 @@
     "api": ["*"],
     "system": ["*"],
     "test": ["*"],
-    "http-test": ["*"]
+    "http-test": ["*"],
+    "workbench": ["*"]
   },
-  "notes": "Fail closed: unknown actors get no customer scopes. '*' means all customers (reviewer / system only)."
+  "notes": "Fail closed: unknown actors get no customer scopes. '*' means all customers (reviewer / system / workbench UI default)."
 }

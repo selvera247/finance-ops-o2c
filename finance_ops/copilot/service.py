@@ -25,6 +25,7 @@ from finance_ops.copilot.config import (
 from finance_ops.copilot.evidence_cache import (
     cache_evidence_pack,
     get_cached_evidence,
+    invalidate_evidence,
 )
 from finance_ops.copilot.investigate import (
     build_evidence_pack,
@@ -523,33 +524,53 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
             # Demo-only quarantine — call warehouse repo directly so policy
             # auto_allow_max=0 does not block the explicit demo flag. Copilot
             # happy path never reaches here when FINANCE_OPS_DEMO_APPLY is unset.
+            # DuckDB payments have a single matched_invoice_id — refuse silent
+            # first-line-only apply when the packet has multiple lines.
             from finance_ops.lib.evidence import record_evidence
 
-            top = hypothesis.lines[0]
-            applied = repo.apply_payment_match(guidance.payment_id, top.invoice_id)
-            warehouse_result = {
-                "status": "success" if applied.get("ok") else "error",
-                "applied": applied,
-                "demo_apply": True,
-                "policy_note": "FINANCE_OPS_DEMO_APPLY=1 bypasses Copilot guidance-only",
-            }
-            warehouse_result["evidence"] = record_evidence(
-                agent="copilot",
-                action="demo_apply_payment_match",
-                inputs={
-                    "payment_id": guidance.payment_id,
-                    "invoice_id": top.invoice_id,
-                    "case_id": case_id,
-                },
-                outputs=warehouse_result,
-                sources=[repo.source_label(), "flag:FINANCE_OPS_DEMO_APPLY"],
-            )
-            guidance = guidance.model_copy(
-                update={
-                    "warehouse_applied": bool(applied.get("ok")),
-                    "warehouse_apply_result": warehouse_result,
+            if len(hypothesis.lines) != 1:
+                warehouse_result = {
+                    "status": "error",
+                    "error": "multi_line_demo_apply_unsupported",
+                    "demo_apply": True,
+                    "line_count": len(hypothesis.lines),
+                    "hint": "Demo apply supports one invoice line; edit to a single line or leave guidance-only.",
+                    "policy_note": "FINANCE_OPS_DEMO_APPLY=1 bypasses Copilot guidance-only",
                 }
-            )
+                guidance = guidance.model_copy(
+                    update={
+                        "warehouse_applied": False,
+                        "warehouse_apply_result": warehouse_result,
+                    }
+                )
+            else:
+                top = hypothesis.lines[0]
+                applied = repo.apply_payment_match(
+                    guidance.payment_id, top.invoice_id
+                )
+                warehouse_result = {
+                    "status": "success" if applied.get("ok") else "error",
+                    "applied": applied,
+                    "demo_apply": True,
+                    "policy_note": "FINANCE_OPS_DEMO_APPLY=1 bypasses Copilot guidance-only",
+                }
+                warehouse_result["evidence"] = record_evidence(
+                    agent="copilot",
+                    action="demo_apply_payment_match",
+                    inputs={
+                        "payment_id": guidance.payment_id,
+                        "invoice_id": top.invoice_id,
+                        "case_id": case_id,
+                    },
+                    outputs=warehouse_result,
+                    sources=[repo.source_label(), "flag:FINANCE_OPS_DEMO_APPLY"],
+                )
+                guidance = guidance.model_copy(
+                    update={
+                        "warehouse_applied": bool(applied.get("ok")),
+                        "warehouse_apply_result": warehouse_result,
+                    }
+                )
 
         new_status = status_for_decision(body.decision)
         # If demo apply succeeded, mark resolved like legacy path
@@ -589,6 +610,8 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
                 demo_apply=demo_apply_enabled(),
             ),
         )
+        # Warehouse / status may have changed — drop stale evidence packs.
+        invalidate_evidence(case_id)
         return {
             "status": "success",
             "case_id": case_id,
@@ -638,6 +661,7 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
             auto_max=auto_max,
         ),
     )
+    invalidate_evidence(case_id)
     return {
         "status": "success",
         "case_id": case_id,

@@ -242,13 +242,15 @@ export class CopilotWorkbench {
       error: this.detailError,
     });
 
-    const hyp = this.caseData?.hypothesis || null;
+    const hyp = this.detailError ? null : this.caseData?.hypothesis || null;
     const insuff = isInsufficient(hyp);
+    // Prefer draft string once openCase initialized it (incl. cleared "").
     const workingHyp = hyp
       ? {
           ...hyp,
           lines: this.draftLines || hyp.lines || [],
-          raw_notes: this.draftNotes || hyp.raw_notes || "",
+          raw_notes:
+            this.draftNotes != null ? this.draftNotes : hyp.raw_notes || "",
         }
       : null;
 
@@ -272,8 +274,8 @@ export class CopilotWorkbench {
       hypothesis: workingHyp,
       summary: this.caseData?.summary || null,
       loading: this.detailLoading && !workingHyp,
-      disabled: this.actionBusy || !this.caseData,
-      editable: Boolean(this.caseData),
+      disabled: this.actionBusy || !this.caseData || this.detailLoading,
+      editable: Boolean(this.caseData) && !this.detailLoading && !this.detailError,
       onCitationClick: (sid) => {
         const ok = jumpToEvidence(sid, this.root);
         if (!ok) announce(`Evidence source not found: ${sid}`, "assertive");
@@ -286,22 +288,22 @@ export class CopilotWorkbench {
     });
 
     this.guidanceView.update({
-      guidance: this.caseData?.guidance || null,
+      guidance: this.detailError ? null : this.caseData?.guidance || null,
       loading: false,
     });
 
     this.evidenceView.update({
-      items: this.evidence,
-      loading: this.detailLoading && !this.evidence.length,
+      items: this.detailError ? [] : this.evidence,
+      loading: this.detailLoading,
       thinEvidence: insuff,
     });
 
     this.auditView.update({
-      events: this.auditEvents,
-      decisionActor: this.auditMeta.decision_actor,
-      decisionAt: this.auditMeta.decision_at,
-      confidenceBand: this.auditMeta.confidence_band,
-      loading: this.detailLoading && !this.auditEvents.length,
+      events: this.detailError ? [] : this.auditEvents,
+      decisionActor: this.detailError ? undefined : this.auditMeta.decision_actor,
+      decisionAt: this.detailError ? undefined : this.auditMeta.decision_at,
+      confidenceBand: this.detailError ? undefined : this.auditMeta.confidence_band,
+      loading: this.detailLoading,
     });
   }
 
@@ -350,9 +352,9 @@ export class CopilotWorkbench {
         if (syncMeta.status === "throttled") {
           this.syncStatusText = `Sync throttled — retry in ${syncMeta.retry_after_sec || "?"}s`;
         } else if (syncMeta.hint && !this.cases.length) {
+          // Operator hint is not a request failure — keep empty-state, not error UI.
           this.syncStatusText = syncMeta.hint;
           this.queueEmptyHint = syncMeta.hint;
-          this.queueError = syncMeta.hint;
         } else {
           this.syncStatusText = `Synced ${syncMeta.synced_count ?? 0} · payments ${syncMeta.payment_count ?? 0}${seeded}`;
         }
@@ -418,6 +420,11 @@ export class CopilotWorkbench {
     this.actionError = null;
     this.draftLines = null;
     this.draftNotes = "";
+    // Drop prior case payloads so skeletons show and we never paint A under B.
+    this.caseData = null;
+    this.evidence = [];
+    this.auditEvents = [];
+    this.auditMeta = {};
     // Selection highlight only — do not refetch the whole queue.
     this._paintQueue();
     this._paintDetail();
@@ -432,7 +439,7 @@ export class CopilotWorkbench {
         ? this.caseData.hypothesis.lines.map((l) => ({ ...l }))
         : null;
       this.draftNotes = this.caseData?.hypothesis?.raw_notes || "";
-      this.detailLoading = false;
+      // Keep detailLoading until evidence/audit settle so prior panes stay empty.
       this._paintDetail();
       this._paintQueue();
 
@@ -446,6 +453,8 @@ export class CopilotWorkbench {
       const au = settled[1];
       if (ev.status === "fulfilled") {
         this.evidence = ev.value.evidence?.items || [];
+      } else if (ev.reason?.name !== "AbortError") {
+        this.evidence = [];
       }
       if (au.status === "fulfilled") {
         this.auditEvents = au.value.audit || [];
@@ -454,6 +463,9 @@ export class CopilotWorkbench {
           decision_at: au.value.decision_at,
           confidence_band: au.value.confidence_band,
         };
+      } else if (au.reason?.name !== "AbortError") {
+        this.auditEvents = [];
+        this.auditMeta = {};
       }
       const sideErr =
         (ev.status === "rejected" && ev.reason?.name !== "AbortError" && ev.reason) ||
@@ -463,11 +475,18 @@ export class CopilotWorkbench {
         this.actionError = String(sideErr.message || sideErr).trim() || "Request failed";
         announce(this.actionError, "assertive");
       }
+      this.detailLoading = false;
       announce(`Opened case ${caseId}`);
       this._paintDetail();
     } catch (err) {
       if (err?.name === "AbortError" || signal.aborted) return;
       this.detailLoading = false;
+      this.caseData = null;
+      this.evidence = [];
+      this.auditEvents = [];
+      this.auditMeta = {};
+      this.draftLines = null;
+      this.draftNotes = "";
       const raw = String(err.message || err).trim();
       this.detailError = raw || `Failed to open case (HTTP ${err.status || "?"})`;
       const payload = err.payload?.detail || err.payload;
@@ -554,17 +573,23 @@ export class CopilotWorkbench {
         raw_notes: this.draftNotes,
         actor: this.actor,
       });
+      if (this.selectedId !== caseId) return;
       if (out.hypothesis && this.caseData) {
         this.caseData = { ...this.caseData, hypothesis: out.hypothesis };
       }
       announce("Hypothesis saved");
       this._paintDetail();
     } catch (err) {
+      if (this.selectedId !== caseId) return;
       this.actionError = String(err.message || err);
       announce(this.actionError, "assertive");
     } finally {
-      this.actionBusy = false;
-      this._paintDetail();
+      if (this.selectedId === caseId) {
+        this.actionBusy = false;
+        this._paintDetail();
+      } else {
+        this.actionBusy = false;
+      }
     }
   }
 
@@ -597,6 +622,7 @@ export class CopilotWorkbench {
         };
       }
       const out = await this.api.decide(caseId, body);
+      if (this.selectedId !== caseId) return;
       if (out.guidance && this.caseData) {
         this.caseData = {
           ...this.caseData,
@@ -623,6 +649,7 @@ export class CopilotWorkbench {
       }
       // One queue refresh after mutation (not openCase + refresh).
       await this.refreshQueue(false);
+      if (this.selectedId !== caseId) return;
       try {
         const a = await this.api.audit(caseId);
         if (this.selectedId === caseId) {
@@ -638,11 +665,14 @@ export class CopilotWorkbench {
       }
       this._paintDetail();
     } catch (err) {
+      if (this.selectedId !== caseId) return;
       this.actionError = String(err.message || err);
       announce(this.actionError, "assertive");
     } finally {
       this.actionBusy = false;
-      this._paintDetail();
+      if (this.selectedId === caseId) {
+        this._paintDetail();
+      }
     }
   }
 }

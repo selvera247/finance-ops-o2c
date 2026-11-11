@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -25,6 +26,20 @@ from finance_ops.lib.paths import REPO_ROOT
 
 # Cap retained audit events per case (oldest dropped). Override via env.
 _MAX_AUDIT = max(20, int(os.getenv("COPILOT_MAX_AUDIT_EVENTS", "100") or "100"))
+
+# Uvicorn runs sync routes in a threadpool; GET /evidence appends audit while
+# investigate/decide persist hypothesis — unlocked RMW lost updates.
+_OVERLAY_GUARDS: dict[str, threading.Lock] = {}
+_OVERLAY_GUARDS_LOCK = threading.Lock()
+
+
+def _overlay_lock(case_id: str) -> threading.Lock:
+    with _OVERLAY_GUARDS_LOCK:
+        lock = _OVERLAY_GUARDS.get(case_id)
+        if lock is None:
+            lock = threading.Lock()
+            _OVERLAY_GUARDS[case_id] = lock
+        return lock
 
 
 def _root() -> Path:
@@ -78,7 +93,11 @@ def save_overlay(case_id: str, data: dict[str, Any]) -> dict[str, Any]:
     path = case_path(case_id)
     data = {**data, "case_id": case_id, "updated_at": _now()}
     # Compact JSON — indent=2 doubled overlay size on every investigate write.
-    path.write_text(json.dumps(data, separators=(",", ":"), default=str), encoding="utf-8")
+    # Atomic replace avoids torn reads if another thread loads mid-write.
+    payload = json.dumps(data, separators=(",", ":"), default=str)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, path)
     return data
 
 
@@ -86,10 +105,11 @@ def update_overlay(
     case_id: str,
     mutator: Callable[[dict[str, Any]], None],
 ) -> dict[str, Any]:
-    """Single load → mutate → save cycle for multi-field updates."""
-    overlay = load_overlay(case_id)
-    mutator(overlay)
-    return save_overlay(case_id, overlay)
+    """Single load → mutate → save cycle for multi-field updates (per-case lock)."""
+    with _overlay_lock(case_id):
+        overlay = load_overlay(case_id)
+        mutator(overlay)
+        return save_overlay(case_id, overlay)
 
 
 def _trim_audit(audit: list[Any]) -> list[Any]:

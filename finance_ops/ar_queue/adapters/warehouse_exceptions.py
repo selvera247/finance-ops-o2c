@@ -106,12 +106,16 @@ class WarehouseExceptionStore:
     ) -> None:
         from data_plane.warehouse import db
 
+        # DELETE+INSERT must share one connection/lock — otherwise concurrent
+        # GET /cases can 404 mid-replace (sibling of DuckDB connect races).
         eid = row["exception_id"]
-        db.execute("DELETE FROM ar_exceptions WHERE exception_id = ?", [eid])
-        db.execute(
-            "INSERT INTO ar_exceptions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            _row_params(row, opened_at=opened_at, now=now),
-        )
+        with db.connection() as con:
+            con.execute("DELETE FROM ar_exceptions WHERE exception_id = ?", [eid])
+            con.execute(
+                "INSERT INTO ar_exceptions VALUES "
+                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                _row_params(row, opened_at=opened_at, now=now),
+            )
 
     def replace_rows_batch(
         self,
@@ -192,21 +196,22 @@ class WarehouseExceptionStore:
     ) -> None:
         from data_plane.warehouse import db
 
-        db.execute("DELETE FROM sku_meter_events WHERE event_id = ?", [event_id])
-        db.execute(
-            "INSERT INTO sku_meter_events VALUES (?,?,?,?,?,?,?,?,?)",
-            [
-                event_id,
-                sku,
-                exception_id,
-                customer_id,
-                1.0,
-                "exception",
-                "billable",
-                now,
-                json.dumps(meta),
-            ],
-        )
+        with db.connection() as con:
+            con.execute("DELETE FROM sku_meter_events WHERE event_id = ?", [event_id])
+            con.execute(
+                "INSERT INTO sku_meter_events VALUES (?,?,?,?,?,?,?,?,?)",
+                [
+                    event_id,
+                    sku,
+                    exception_id,
+                    customer_id,
+                    1.0,
+                    "exception",
+                    "billable",
+                    now,
+                    json.dumps(meta),
+                ],
+            )
 
 
 def preserve_terminal_status(

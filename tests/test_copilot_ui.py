@@ -211,6 +211,18 @@ def test_workbench_uses_live_api_client() -> None:
     assert "detail: \"summary\"" in src or "detail: 'summary'" in src
     assert "_paintQueue" in src
     assert "Reuse investigate" in src or "out.evidence" in src
+    # Case-switch / decide races: clear prior detail; guard selectedId.
+    assert "this.caseData = null" in src
+    assert "this.selectedId !== caseId" in src
+    assert "this.draftNotes != null" in src
+
+
+def test_api_client_normalizes_blank_token_and_empty_error_body() -> None:
+    api_src = (UI_ROOT / "js" / "api.js").read_text(encoding="utf-8")
+    assert "export function normalizeApiToken" in api_src
+    assert "return t ? t : null" in api_src
+    assert "HTTP ${res.status}" in api_src
+    assert "res.text()" in api_src
 
 
 def test_examples_lazy_loads_fixtures() -> None:
