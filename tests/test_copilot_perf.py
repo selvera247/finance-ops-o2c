@@ -3,15 +3,36 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from finance_ops.ar_queue.adapters.ttl_cache import DEFAULT_QUEUE_CACHE
+from finance_ops.ar_queue.adapters.warehouse_exceptions import DEFAULT_EXCEPTION_STORE
+from finance_ops.ar_queue.domain.statuses import OPEN_STATUSES
 from finance_ops.copilot import service as copilot
 from finance_ops.copilot import store as case_store
 from finance_ops.copilot.evidence_cache import cache_stats, invalidate_evidence
 from pipelines.batch.ingest import ingest_batch
 from scripts.load_spike_a import load as load_spike_a
+
+
+def _reopen_fixture_case(case_id: str) -> None:
+    """Prior suites may leave PAY-1001 terminal; sync preserves closed_rejected."""
+    store = DEFAULT_EXCEPTION_STORE
+    store.ensure_schema()
+    row = store.fetch_by_id(case_id)
+    assert row is not None, f"missing exception row for {case_id}"
+    if str(row.get("status") or "") in OPEN_STATUSES:
+        return
+    now = datetime.now(timezone.utc)
+    store.replace_row(
+        {**row, "status": "open", "resolved_at": None},
+        opened_at=row.get("opened_at") or now,
+        now=now,
+    )
+    DEFAULT_QUEUE_CACHE.invalidate_queue()
 
 
 @pytest.fixture()
@@ -28,7 +49,9 @@ def spike_ready(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     load_spike_a(replace_customers=True)
     sync = copilot.ensure_queue(sync=True, force=True)
     assert sync.get("synced_count", 0) >= 1
-    return copilot.case_id_for_payment("PAY-1001")
+    case_id = copilot.case_id_for_payment("PAY-1001")
+    _reopen_fixture_case(case_id)
+    return case_id
 
 
 def test_queue_summary_omits_heavy_blobs(spike_ready: str) -> None:
