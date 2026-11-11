@@ -232,13 +232,15 @@ const paymentFields = {
   const pre = root.querySelector(".cp-json-details__pre");
   assert.ok(pre, "JSON pre present");
   assert.ok(pre.hasAttribute("hidden"), "details collapsed by default");
-  assert.equal(pre.textContent.includes("&quot;"), false);
-  assert.ok(pre.textContent.includes('"payment_id"'));
-  assert.ok(pre.textContent.includes('"PAY-9003"'));
+  // Lazy stringify: empty until first expand.
+  assert.equal(pre.textContent, "");
 
   toggle.click();
   assert.equal(toggle.getAttribute("aria-expanded"), "true");
   assert.equal(pre.hasAttribute("hidden"), false);
+  assert.equal(pre.textContent.includes("&quot;"), false);
+  assert.ok(pre.textContent.includes('"payment_id"'));
+  assert.ok(pre.textContent.includes('"PAY-9003"'));
 }
 
 {
@@ -269,6 +271,8 @@ const paymentFields = {
   assert.equal(toggle.getAttribute("aria-expanded"), "false");
   const pre = root.querySelector(".cp-json-details__pre");
   assert.ok(pre.hasAttribute("hidden"));
+  assert.equal(pre.textContent, "");
+  toggle.click();
   assert.equal(pre.textContent.includes("&quot;"), false);
   assert.ok(pre.textContent.includes('"payment_id"'));
 }

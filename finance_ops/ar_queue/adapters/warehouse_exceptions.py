@@ -41,18 +41,42 @@ def _row_params(row: dict[str, Any], *, opened_at: Any, now: datetime) -> list[A
     ]
 
 
-def clean_exception_row(row: dict[str, Any]) -> dict[str, Any]:
+# Columns needed for Copilot queue ranking / summary DTOs (skip fat JSON blobs).
+_RANK_COLUMNS = (
+    "exception_id",
+    "lane",
+    "source_type",
+    "source_id",
+    "customer_id",
+    "amount",
+    "currency",
+    "status",
+    "recommended_invoice_id",
+    "match_score",
+    "opened_at",
+    "updated_at",
+    "resolved_at",
+)
+
+
+def clean_exception_row(
+    row: dict[str, Any],
+    *,
+    parse_json_blobs: bool = True,
+) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in row.items():
         if hasattr(v, "isoformat"):
             out[k] = v.isoformat()
-        elif k.endswith("_json") and isinstance(v, str) and v:
+        elif parse_json_blobs and k.endswith("_json") and isinstance(v, str) and v:
             try:
                 out[k.replace("_json", "")] = json.loads(v)
             except json.JSONDecodeError:
                 out[k] = v
         else:
             out[k] = v
+    if not parse_json_blobs:
+        return out
     if "match_reasons" not in out and "match_reasons_json" in row:
         raw = row.get("match_reasons_json")
         if isinstance(raw, str) and raw:
@@ -150,10 +174,18 @@ class WarehouseExceptionStore:
         status: str | None,
         lane: str | None,
         limit: int,
+        columns: str = "full",
     ) -> list[dict[str, Any]]:
         from data_plane.warehouse import db
 
-        sql = "SELECT * FROM ar_exceptions WHERE 1=1"
+        # ``rank`` projects only fields used by Copilot ranking / summary DTOs —
+        # skips payload_json / match_reasons_json parse cost on Sync/refresh.
+        select = (
+            ", ".join(_RANK_COLUMNS)
+            if columns == "rank"
+            else "*"
+        )
+        sql = f"SELECT {select} FROM ar_exceptions WHERE 1=1"
         params: list[Any] = []
         if status:
             if status == "open":
@@ -168,7 +200,11 @@ class WarehouseExceptionStore:
             params.append(lane)
         sql += " ORDER BY updated_at DESC LIMIT ?"
         params.append(limit)
-        return [clean_exception_row(r) for r in db.query_dicts(sql, params)]
+        parse_blobs = columns != "rank"
+        return [
+            clean_exception_row(r, parse_json_blobs=parse_blobs)
+            for r in db.query_dicts(sql, params)
+        ]
 
     def list_status_amounts(self) -> list[dict[str, Any]]:
         from data_plane.warehouse import db

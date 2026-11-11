@@ -75,13 +75,13 @@ def build_digest_payload(
             },
         }
 
-    # detail=full only for digest (needs lines/summary); workbench uses summary.
+    # Lean digest DTO (lines + summary text) — avoid full Case / guidance validate.
     queue = copilot_service.list_queue(
         status="open",
         lane="cash_app",
         limit=max(max_items * 5, 50),
         sync_first=sync_first,
-        detail="full",
+        detail="digest",
     )
     cases = list(queue.get("cases") or [])
     items: list[dict[str, Any]] = []

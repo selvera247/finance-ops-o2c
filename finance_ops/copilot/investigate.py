@@ -71,13 +71,19 @@ def load_payment_score_context(
     resolved_customer = str(customer_id) if customer_id else None
     invoices: list[dict[str, Any]] = []
 
+    # Cap invoice catalog for scoring/evidence — demo+prod customers rarely need more.
+    _INV_CAP = max(20, int(os.getenv("COPILOT_INVOICE_SCORE_LIMIT", "100") or "100"))
     if resolved_customer:
-        invoices = list(repo.list_invoices(customer_id=resolved_customer) or [])
+        invoices = list(
+            repo.list_invoices(customer_id=resolved_customer, open_only=False) or []
+        )[:_INV_CAP]
     elif resolve_customer_from_payment and payment:
         cust = payment.get("customer_id")
         if cust:
             resolved_customer = str(cust)
-            invoices = list(repo.list_invoices(customer_id=resolved_customer) or [])
+            invoices = list(
+                repo.list_invoices(customer_id=resolved_customer, open_only=False) or []
+            )[:_INV_CAP]
 
     if payment:
         scored = score_against_invoices(payment, invoices)

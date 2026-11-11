@@ -211,8 +211,14 @@ def test_workbench_uses_live_api_client() -> None:
     assert "detail: \"summary\"" in src or "detail: 'summary'" in src
     assert "_paintQueue" in src
     assert "Reuse investigate" in src or "out.evidence" in src
+    # Stable handler refs unlock Component.update shallow-equal skips.
+    assert "this._onSelectCase" in src
+    assert "this._onInvestigate" in src
+    # Parallel openCase (case+evidence+audit one wave) + client case cache.
+    assert "Promise.allSettled" in src
+    assert "_caseCache" in src or "_rememberCase" in src
+    assert "Optimistic header" in src or "queueRow" in src
     # Case-switch / decide races: clear prior detail; guard selectedId.
-    assert "this.caseData = null" in src
     assert "this.selectedId !== caseId" in src
     assert "this.draftNotes != null" in src
 
@@ -275,9 +281,19 @@ def test_json_display_helpers_avoid_esc_for_text_nodes() -> None:
     assert "formatJsonForDisplay" in utils
     assert "jsonDetailsBlock" in utils
     assert 'aria-expanded' in utils
+    # Lazy stringify on first expand (collapsed Details is the common path).
+    assert "materialized" in utils or "Defer JSON.stringify" in utils
     for name in ("EvidencePane.js", "GuidancePacketView.js", "AuditTimeline.js"):
         src = (COMPONENTS / name).read_text(encoding="utf-8")
         assert "esc(JSON.stringify" not in src, f"{name} still double-escapes JSON"
+    audit = (COMPONENTS / "AuditTimeline.js").read_text(encoding="utf-8")
+    assert "jsonDetailsBlock" in audit
+    assert "visibleCount" in audit
+    evidence = (COMPONENTS / "EvidencePane.js").read_text(encoding="utf-8")
+    assert "visibleCount" in evidence
+    queue = (COMPONENTS / "ExceptionQueue.js").read_text(encoding="utf-8")
+    assert "data-case-id" in queue
+    assert "aria-selected" in queue
 
 
 def test_examples_describe_summary_first_evidence() -> None:

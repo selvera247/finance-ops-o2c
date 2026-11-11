@@ -25,6 +25,39 @@ const DEFAULT_PAGE_SIZE = 50;
  */
 
 export class ExceptionQueue extends Component {
+  /**
+   * Selection-only updates patch aria-selected instead of remounting ≤50 rows.
+   * @param {Record<string, unknown>} [next]
+   * @param {{ force?: boolean }} [opts]
+   */
+  update(next = {}, opts = {}) {
+    const merged = { ...this.props, ...next };
+    if (
+      !opts.force &&
+      this.props.cases === merged.cases &&
+      this.props.loading === merged.loading &&
+      this.props.error === merged.error &&
+      this.props.visibleCount === merged.visibleCount &&
+      this.props.pageSize === merged.pageSize &&
+      this.props.emptyMessage === merged.emptyMessage &&
+      this.props.onSelect === merged.onSelect &&
+      this.props.onShowMore === merged.onShowMore &&
+      this.props.selectedId !== merged.selectedId
+    ) {
+      this.props = merged;
+      const list = this.root.querySelector('[role="listbox"]');
+      if (list) {
+        for (const btn of list.querySelectorAll('[role="option"]')) {
+          const id = btn.getAttribute("data-case-id");
+          const selected = id === merged.selectedId;
+          btn.setAttribute("aria-selected", selected ? "true" : "false");
+        }
+        return;
+      }
+    }
+    super.update(next, opts);
+  }
+
   render() {
     /** @type {ExceptionQueueProps} */
     const p = this.props;
@@ -103,6 +136,7 @@ export class ExceptionQueue extends Component {
             type: "button",
             className: "cp-queue__item",
             role: "option",
+            "data-case-id": c.case_id,
             "aria-selected": selected ? "true" : "false",
             "aria-label": `Case ${c.case_id}, ${c.status || "open"}`,
             disabled: p.disabled,

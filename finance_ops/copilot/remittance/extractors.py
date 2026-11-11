@@ -382,6 +382,11 @@ def find_remittance_path(payment_id: str) -> Path | None:
     return None
 
 
+# Process memo: remittance path + mtime → extracted document (avoids re-OCR/PDF on evidence miss).
+_REMIT_PATH_CACHE: dict[tuple[str, float], RemittanceDocument] = {}
+_REMIT_PATH_CACHE_MAX = 64
+
+
 def extract_remittance_document(
     *,
     payment_id: str,
@@ -394,12 +399,25 @@ def extract_remittance_document(
     ext = extractor or get_default_extractor()
     resolved = path or find_remittance_path(payment_id)
     if resolved is not None:
-        return ext.extract_path(
+        try:
+            mtime = resolved.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        cache_key = (str(resolved.resolve()), mtime)
+        hit = _REMIT_PATH_CACHE.get(cache_key)
+        if hit is not None:
+            return hit
+        doc = ext.extract_path(
             resolved,
             document_id=f"REM-{payment_id}",
             customer_id=customer_id,
             payment_id=payment_id,
         )
+        if doc is not None:
+            if len(_REMIT_PATH_CACHE) >= _REMIT_PATH_CACHE_MAX:
+                _REMIT_PATH_CACHE.pop(next(iter(_REMIT_PATH_CACHE)), None)
+            _REMIT_PATH_CACHE[cache_key] = doc
+        return doc
     if reference_text:
         return ext.extract_text(
             reference_text,

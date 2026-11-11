@@ -16,6 +16,8 @@ import { Skeleton, StatusPill } from "./shared.js";
 
 const SOURCE_ORDER = ["payment", "remittance", "invoice", "rule_match", "email"];
 
+const DEFAULT_VISIBLE = 20;
+
 /**
  * @typedef {Object} EvidencePaneProps
  * @property {import('../types.js').EvidenceItem[]} [items]
@@ -24,6 +26,8 @@ const SOURCE_ORDER = ["payment", "remittance", "invoice", "rule_match", "email"]
  * @property {boolean} [thinEvidence]
  * @property {string} [ariaLabel]
  * @property {(sourceId: string) => void} [onItemFocus]
+ * @property {number} [visibleCount]
+ * @property {() => void} [onShowMore]
  */
 
 /**
@@ -81,8 +85,8 @@ export class EvidencePane extends Component {
       return;
     }
 
-    const items = p.items || [];
-    if (!items.length) {
+    const allItems = p.items || [];
+    if (!allItems.length) {
       setChildren(
         this.root,
         el(
@@ -99,6 +103,11 @@ export class EvidencePane extends Component {
       return;
     }
 
+    const visibleCap =
+      p.visibleCount != null ? p.visibleCount : DEFAULT_VISIBLE;
+    const items = allItems.slice(0, visibleCap);
+    const hidden = Math.max(0, allItems.length - items.length);
+
     const groups = new Map();
     for (const item of items) {
       const key = item.source_type || "other";
@@ -112,8 +121,8 @@ export class EvidencePane extends Component {
 
     const thin =
       p.thinEvidence ||
-      items.length < 2 ||
-      items.every((it) => it.stub);
+      allItems.length < 2 ||
+      allItems.every((it) => it.stub);
 
     const root = el("div", {
       className: "cp-evidence",
@@ -181,6 +190,21 @@ export class EvidencePane extends Component {
         group.append(itemEl);
       }
       root.append(group);
+    }
+
+    if (hidden > 0) {
+      root.append(
+        el(
+          "button",
+          {
+            type: "button",
+            className: "cp-btn cp-btn--ghost cp-btn--sm",
+            "aria-label": `Show more evidence (${hidden} remaining)`,
+            onClick: () => p.onShowMore?.(),
+          },
+          `Show more (${hidden} remaining)`,
+        ),
+      );
     }
 
     setChildren(this.root, root);
