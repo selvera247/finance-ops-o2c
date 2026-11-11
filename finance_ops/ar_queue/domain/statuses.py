@@ -18,16 +18,9 @@ OPEN_STATUSES = frozenset(
     }
 )
 
-# Copilot queue ranking includes these (investigation + ready guidance).
-COPILOT_QUEUE_STATUSES = frozenset(
-    {
-        "open",
-        "pending_hitl",
-        "escalated",
-        "need_info",
-        "ready_to_apply",
-    }
-)
+# Copilot queue ranking includes the same open/waiting statuses today.
+# Keep the alias so Copilot call sites stay explicit if the sets diverge later.
+COPILOT_QUEUE_STATUSES = OPEN_STATUSES
 
 TERMINAL_STATUSES = frozenset({"resolved", "rejected", "closed_rejected"})
 

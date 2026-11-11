@@ -116,3 +116,36 @@ def test_sync_throttle(spike_ready: str, monkeypatch: pytest.MonkeyPatch) -> Non
     assert second.get("status") == "throttled"
     forced = svc.ensure_queue(sync=True, force=True)
     assert forced.get("status") != "throttled"
+
+
+def test_decide_single_overlay_write(
+    spike_ready: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Accept path should persist guidance + decision + audit in one overlay write."""
+    from finance_ops.copilot.types import Decision, DecisionRequest
+
+    case_id = spike_ready
+    inv = copilot.investigate(case_id, actor="perf")
+    assert inv["status"] == "success"
+    hyp = inv.get("hypothesis") or {}
+    if hyp.get("insufficient_data") or not hyp.get("lines"):
+        pytest.skip("fixture case abstains; cannot exercise accept overlay write")
+
+    writes: list[str] = []
+    real_save = case_store.save_overlay
+
+    def _counting_save(cid: str, data: dict) -> dict:
+        writes.append(cid)
+        return real_save(cid, data)
+
+    monkeypatch.setattr(case_store, "save_overlay", _counting_save)
+    out = copilot.decide(
+        case_id,
+        DecisionRequest(decision=Decision.accept, actor="perf"),
+    )
+    assert out["status"] == "success"
+    assert writes == [case_id]
+    overlay = case_store.load_overlay(case_id)
+    assert overlay.get("guidance")
+    assert overlay.get("last_decision") == "accept"
+    assert any(e.get("event") == "decision" for e in overlay.get("audit") or [])
