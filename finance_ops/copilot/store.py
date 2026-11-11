@@ -237,3 +237,54 @@ def set_decision(
             overlay["hypothesis"] = edited_hypothesis
 
     update_overlay(case_id, _mutate)
+
+
+def persist_decision(
+    case_id: str,
+    *,
+    decision: str,
+    reason_code: str | None,
+    actor: str | None,
+    audit_detail: dict[str, Any],
+    confidence_band: str | None = None,
+    citation_map: list[dict[str, Any]] | None = None,
+    raw_hypothesis: dict[str, Any] | None = None,
+    edited_hypothesis: dict[str, Any] | None = None,
+    guidance: ApplyGuidancePacket | None = None,
+    hypothesis: MatchHypothesis | None = None,
+) -> None:
+    """One overlay write for decide: optional hyp/guidance + decision fields + audit."""
+
+    def _mutate(overlay: dict[str, Any]) -> None:
+        if hypothesis is not None:
+            dumped = hypothesis.model_dump()
+            overlay["hypothesis"] = dumped
+            overlay["confidence_band"] = hypothesis.confidence_band
+            overlay["citation_map"] = [c.model_dump() for c in hypothesis.citation_map]
+            if overlay.get("raw_hypothesis") is None:
+                overlay["raw_hypothesis"] = dumped
+        if guidance is not None:
+            overlay["guidance"] = guidance.model_dump()
+        overlay["last_decision"] = decision
+        overlay["reason_code"] = reason_code
+        overlay["decision_actor"] = actor
+        overlay["decision_at"] = _now()
+        if confidence_band is not None:
+            overlay["confidence_band"] = confidence_band
+        if citation_map is not None:
+            overlay["citation_map"] = citation_map
+        if raw_hypothesis is not None:
+            overlay["raw_hypothesis"] = raw_hypothesis
+        if edited_hypothesis is not None:
+            overlay["hypothesis"] = edited_hypothesis
+        entry = AuditEvent(
+            ts=_now(),
+            event="decision",
+            actor=actor,
+            detail=audit_detail,
+        )
+        audit = list(overlay.get("audit") or [])
+        audit.append(entry.model_dump())
+        overlay["audit"] = _trim_audit(audit)
+
+    update_overlay(case_id, _mutate)

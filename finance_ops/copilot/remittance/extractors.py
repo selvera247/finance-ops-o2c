@@ -36,6 +36,13 @@ _THIN_RE = re.compile(
 _PDF_LITERAL = re.compile(r"\((?:\\.|[^\\)])*\)\s*Tj")
 
 
+def is_thin_remittance_text(text: str | None) -> bool:
+    """Shared thin-remittance detector for extractors + investigate fallback."""
+    if not text:
+        return False
+    return bool(_THIN_RE.search(text))
+
+
 class OcrProvider(ABC):
     """Optional OCR backend. Stub used in CI."""
 

@@ -26,7 +26,11 @@ from finance_ops.copilot.evidence_cache import (
     cache_evidence_pack,
     get_cached_evidence,
 )
-from finance_ops.copilot.investigate import build_evidence_pack, investigate_case
+from finance_ops.copilot.investigate import (
+    build_evidence_pack,
+    investigate_case,
+    load_payment_score_context,
+)
 from finance_ops.copilot.reasons import validate_reason_code
 from finance_ops.copilot.types import (
     ApplyGuidancePacket,
@@ -38,7 +42,6 @@ from finance_ops.copilot.types import (
     InvestigationSummary,
     MatchHypothesis,
 )
-from finance_ops.ar_queue.domain.matching import score_against_invoices
 from data_plane import repository as repo
 
 QueueDetail = Literal["summary", "full"]
@@ -76,45 +79,15 @@ def _rank_key(row: dict[str, Any]) -> tuple[float, float, float]:
     return (aging * amount * (1.5 - min(score, 1.2)), amount, aging)
 
 
-def _row_to_case(row: dict[str, Any], overlay: dict[str, Any] | None = None) -> Case:
-    overlay = overlay or case_store.load_overlay(str(row["exception_id"]))
+def _confidence_band_from_overlay(overlay: dict[str, Any]) -> Any:
     hyp = overlay.get("hypothesis")
-    summary = overlay.get("summary")
-    guidance = overlay.get("guidance")
-    band = None
-    if isinstance(hyp, dict):
-        band = hyp.get("confidence_band")
-    if band is None:
-        band = overlay.get("confidence_band")
-    return Case(
-        case_id=str(row["exception_id"]),
-        exception_id=str(row["exception_id"]),
-        lane=str(row.get("lane") or "cash_app"),
-        customer_id=row.get("customer_id"),
-        payment_id=row.get("source_id") if row.get("source_type") == "payment" else row.get("source_id"),
-        amount=float(row["amount"]) if row.get("amount") is not None else None,
-        currency=str(row.get("currency") or "USD"),
-        status=str(row.get("status") or "open"),
-        recommended_invoice_id=row.get("recommended_invoice_id"),
-        match_score=float(row["match_score"]) if row.get("match_score") is not None else None,
-        aging_days=_aging_days(row.get("opened_at")),
-        confidence_band=band,
-        hypothesis=MatchHypothesis.model_validate(hyp) if hyp else None,
-        summary=InvestigationSummary.model_validate(summary) if summary else None,
-        last_decision=overlay.get("last_decision"),
-        reason_code=overlay.get("reason_code"),
-        guidance=ApplyGuidancePacket.model_validate(guidance) if guidance else None,
-        payload=row.get("payload") if isinstance(row.get("payload"), dict) else {},
-    )
+    if isinstance(hyp, dict) and hyp.get("confidence_band") is not None:
+        return hyp.get("confidence_band")
+    return overlay.get("confidence_band")
 
 
-def _row_to_case_summary(
-    row: dict[str, Any],
-    overlay: dict[str, Any],
-) -> dict[str, Any]:
-    """List DTO: same Case keys, heavy nested blobs nulled to cut JSON bloat."""
-    hyp = overlay.get("hypothesis") if isinstance(overlay.get("hypothesis"), dict) else {}
-    band = hyp.get("confidence_band") or overlay.get("confidence_band")
+def _case_row_fields(row: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Shared top-level Case fields from exception row + overlay (no nested blobs)."""
     eid = str(row["exception_id"])
     return {
         "case_id": eid,
@@ -130,16 +103,85 @@ def _row_to_case_summary(
             float(row["match_score"]) if row.get("match_score") is not None else None
         ),
         "aging_days": _aging_days(row.get("opened_at")),
-        "confidence_band": band,
-        "hypothesis": None,
-        "summary": None,
+        "confidence_band": _confidence_band_from_overlay(overlay),
         "last_decision": overlay.get("last_decision"),
         "reason_code": overlay.get("reason_code"),
-        "guidance": None,
-        "payload": {},
-        # Additive flag for digest/UI without shipping full hypothesis.
-        "insufficient_data": bool(hyp.get("insufficient_data")),
     }
+
+
+def _row_to_case(row: dict[str, Any], overlay: dict[str, Any] | None = None) -> Case:
+    overlay = overlay or case_store.load_overlay(str(row["exception_id"]))
+    hyp = overlay.get("hypothesis")
+    summary = overlay.get("summary")
+    guidance = overlay.get("guidance")
+    base = _case_row_fields(row, overlay)
+    return Case(
+        **base,
+        hypothesis=MatchHypothesis.model_validate(hyp) if hyp else None,
+        summary=InvestigationSummary.model_validate(summary) if summary else None,
+        guidance=ApplyGuidancePacket.model_validate(guidance) if guidance else None,
+        payload=row.get("payload") if isinstance(row.get("payload"), dict) else {},
+    )
+
+
+def _row_to_case_summary(
+    row: dict[str, Any],
+    overlay: dict[str, Any],
+) -> dict[str, Any]:
+    """List DTO: same Case keys, heavy nested blobs nulled to cut JSON bloat."""
+    hyp = overlay.get("hypothesis") if isinstance(overlay.get("hypothesis"), dict) else {}
+    out = _case_row_fields(row, overlay)
+    out.update(
+        {
+            "hypothesis": None,
+            "summary": None,
+            "guidance": None,
+            "payload": {},
+            # Additive flag for digest/UI without shipping full hypothesis.
+            "insufficient_data": bool(hyp.get("insufficient_data")),
+        }
+    )
+    return out
+
+
+def _decision_audit_detail(
+    *,
+    case_id: str,
+    row: dict[str, Any],
+    body: DecisionRequest,
+    payment_id: Any,
+    invoice_ids: list[str],
+    confidence_band: Any,
+    citation_map: list[dict[str, Any]],
+    raw_hypothesis: Any,
+    edited_hypothesis: Any,
+    guidance: bool,
+    warehouse_applied: bool,
+    auto_max: float,
+    demo_apply: bool | None = None,
+) -> dict[str, Any]:
+    """Shared decision audit payload for accept and reject/escalate/need_info."""
+    detail: dict[str, Any] = {
+        "case_id": case_id,
+        "customer_id": row.get("customer_id"),
+        "payment_id": payment_id,
+        "invoice_ids": invoice_ids,
+        "decision": body.decision.value,
+        "reason_code": body.reason_code,
+        "notes": body.notes,
+        "actor": body.actor,
+        "confidence_band": confidence_band,
+        "citation_map": citation_map,
+        "raw_hypothesis": raw_hypothesis,
+        "edited_hypothesis": edited_hypothesis,
+        "guidance": guidance,
+        "warehouse_applied": warehouse_applied,
+        "auto_apply_fired": False,
+    }
+    if guidance:
+        detail["demo_apply"] = bool(demo_apply)
+        detail["auto_allow_max"] = auto_max
+    return detail
 
 
 def ensure_queue(*, sync: bool = True, force: bool = False) -> dict[str, Any]:
@@ -268,20 +310,18 @@ def get_evidence(case_id: str, *, actor: str = "api") -> dict[str, Any]:
     row = got["exception"]
     payment_id = str(row.get("source_id") or "")
     customer_id = row.get("customer_id")
-    payment = repo.get_payment(payment_id) if payment_id else None
-    invoices = list(repo.list_invoices(customer_id=str(customer_id)) or []) if customer_id else []
-    scored = (
-        score_against_invoices(payment, invoices)
-        if payment
-        else {"candidates": [], "recommendation": None}
+    ctx = load_payment_score_context(
+        payment_id=payment_id,
+        customer_id=str(customer_id) if customer_id else None,
+        resolve_customer_from_payment=False,
     )
     pack = build_evidence_pack(
         case_id=case_id,
-        payment_id=payment_id,
-        customer_id=str(customer_id) if customer_id else None,
-        payment=payment,
-        invoices=invoices,
-        scored=scored,
+        payment_id=ctx["payment_id"] or payment_id,
+        customer_id=ctx["customer_id"],
+        payment=ctx["payment"],
+        invoices=ctx["invoices"],
+        scored=ctx["scored"],
         actor=actor,
     )
     pack_dump = pack.model_dump()
@@ -465,9 +505,10 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
                 "case_id": case_id,
                 "needs_review": True,
             }
+        edited_hypothesis = None
         if body.decision == Decision.edit_ready_to_apply:
             hypothesis = hypothesis.model_copy(update={"edited": True})
-            case_store.set_hypothesis(case_id, hypothesis)
+            edited_hypothesis = hypothesis
 
         guidance = _build_guidance(
             case_id=case_id,
@@ -510,7 +551,6 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
                 }
             )
 
-        case_store.set_guidance(case_id, guidance)
         new_status = status_for_decision(body.decision)
         # If demo apply succeeded, mark resolved like legacy path
         if guidance.warehouse_applied:
@@ -521,39 +561,33 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
         row["status"] = new_status
         upsert_exception(row)
         raw_hyp = overlay.get("raw_hypothesis") or hypothesis.model_dump()
-        case_store.set_decision(
+        raw_hyp_dict = raw_hyp if isinstance(raw_hyp, dict) else hypothesis.model_dump()
+        case_store.persist_decision(
             case_id,
             decision=body.decision.value,
             reason_code=body.reason_code,
             actor=body.actor,
             confidence_band=hypothesis.confidence_band,
             citation_map=[c.model_dump() for c in hypothesis.citation_map],
-            raw_hypothesis=raw_hyp if isinstance(raw_hyp, dict) else hypothesis.model_dump(),
+            raw_hypothesis=raw_hyp_dict,
             edited_hypothesis=hypothesis.model_dump(),
-        )
-        case_store.append_audit(
-            case_id,
-            "decision",
-            actor=body.actor,
-            detail={
-                "case_id": case_id,
-                "customer_id": row.get("customer_id"),
-                "payment_id": guidance.payment_id,
-                "invoice_ids": guidance.invoice_ids,
-                "decision": body.decision.value,
-                "reason_code": body.reason_code,
-                "notes": body.notes,
-                "actor": body.actor,
-                "confidence_band": hypothesis.confidence_band,
-                "citation_map": [c.model_dump() for c in hypothesis.citation_map],
-                "raw_hypothesis": raw_hyp,
-                "edited_hypothesis": hypothesis.model_dump(),
-                "guidance": True,
-                "warehouse_applied": guidance.warehouse_applied,
-                "demo_apply": demo_apply_enabled(),
-                "auto_allow_max": auto_max,
-                "auto_apply_fired": False,
-            },
+            guidance=guidance,
+            hypothesis=edited_hypothesis,
+            audit_detail=_decision_audit_detail(
+                case_id=case_id,
+                row=row,
+                body=body,
+                payment_id=guidance.payment_id,
+                invoice_ids=guidance.invoice_ids,
+                confidence_band=hypothesis.confidence_band,
+                citation_map=[c.model_dump() for c in hypothesis.citation_map],
+                raw_hypothesis=raw_hyp,
+                edited_hypothesis=hypothesis.model_dump(),
+                guidance=True,
+                warehouse_applied=guidance.warehouse_applied,
+                auto_max=auto_max,
+                demo_apply=demo_apply_enabled(),
+            ),
         )
         return {
             "status": "success",
@@ -574,7 +608,7 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
     hyp_data = overlay.get("hypothesis")
     hyp_obj = MatchHypothesis.model_validate(hyp_data) if hyp_data else None
     raw_hyp = overlay.get("raw_hypothesis")
-    case_store.set_decision(
+    case_store.persist_decision(
         case_id,
         decision=body.decision.value,
         reason_code=body.reason_code,
@@ -585,32 +619,24 @@ def decide(case_id: str, body: DecisionRequest) -> dict[str, Any]:
         ),
         raw_hypothesis=raw_hyp if isinstance(raw_hyp, dict) else None,
         edited_hypothesis=hyp_obj.model_dump() if hyp_obj else None,
-    )
-    case_store.append_audit(
-        case_id,
-        "decision",
-        actor=body.actor,
-        detail={
-            "case_id": case_id,
-            "customer_id": row.get("customer_id"),
-            "payment_id": row.get("source_id"),
-            "invoice_ids": (
+        audit_detail=_decision_audit_detail(
+            case_id=case_id,
+            row=row,
+            body=body,
+            payment_id=row.get("source_id"),
+            invoice_ids=(
                 [ln.invoice_id for ln in hyp_obj.lines] if hyp_obj else []
             ),
-            "decision": body.decision.value,
-            "reason_code": body.reason_code,
-            "notes": body.notes,
-            "actor": body.actor,
-            "confidence_band": hyp_obj.confidence_band if hyp_obj else None,
-            "citation_map": (
+            confidence_band=hyp_obj.confidence_band if hyp_obj else None,
+            citation_map=(
                 [c.model_dump() for c in hyp_obj.citation_map] if hyp_obj else []
             ),
-            "raw_hypothesis": raw_hyp,
-            "edited_hypothesis": hyp_obj.model_dump() if hyp_obj else None,
-            "guidance": False,
-            "warehouse_applied": False,
-            "auto_apply_fired": False,
-        },
+            raw_hypothesis=raw_hyp,
+            edited_hypothesis=hyp_obj.model_dump() if hyp_obj else None,
+            guidance=False,
+            warehouse_applied=False,
+            auto_max=auto_max,
+        ),
     )
     return {
         "status": "success",

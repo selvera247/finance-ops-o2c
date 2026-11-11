@@ -8,18 +8,21 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from typing import Any
 
 from finance_ops.ar_queue.domain.matching import score_against_invoices
 from finance_ops.copilot.config import (
+    _truthy,
     copilot_email_evidence_enabled,
     copilot_mode,
     remittance_pdf_extract_enabled,
 )
 from finance_ops.copilot import store as case_store
 from finance_ops.copilot.email_evidence import retrieve_email_evidence
-from finance_ops.copilot.remittance import extract_remittance_document
+from finance_ops.copilot.remittance import (
+    extract_remittance_document,
+    is_thin_remittance_text,
+)
 from finance_ops.copilot.types import (
     Citation,
     ConfidenceBand,
@@ -37,15 +40,6 @@ MODEL_STUB = "deterministic-structured-v2"
 MODEL_RULES = "rules_only"
 RETRIEVER_VERSION = "copilot-evidence-v2"
 
-_THIN_REMITTANCE = re.compile(
-    r"\bno invoice\b|\bmissing remittance\b|\bunknown\b|\bn/?a\b",
-    re.IGNORECASE,
-)
-
-
-def _truthy(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
 
 def _force_deterministic() -> bool:
     return _truthy("COPILOT_FORCE_DETERMINISTIC")
@@ -58,6 +52,51 @@ def _llm_available() -> bool:
         os.getenv("GOOGLE_API_KEY", "").strip()
         or os.getenv("GEMINI_API_KEY", "").strip()
     )
+
+
+def load_payment_score_context(
+    *,
+    payment_id: str,
+    customer_id: str | None = None,
+    resolve_customer_from_payment: bool = False,
+) -> dict[str, Any]:
+    """Shared warehouse payment + invoice + matching load for evidence/investigate.
+
+    When ``resolve_customer_from_payment`` is True (investigate path), missing
+    ``customer_id`` falls back to the payment row. Evidence GET keeps the
+    exception-row customer only so list behavior stays unchanged.
+    """
+    pid = payment_id.strip().upper() if payment_id else ""
+    payment = repo.get_payment(pid) if pid else None
+    resolved_customer = str(customer_id) if customer_id else None
+    invoices: list[dict[str, Any]] = []
+
+    if resolved_customer:
+        invoices = list(repo.list_invoices(customer_id=resolved_customer) or [])
+    elif resolve_customer_from_payment and payment:
+        cust = payment.get("customer_id")
+        if cust:
+            resolved_customer = str(cust)
+            invoices = list(repo.list_invoices(customer_id=resolved_customer) or [])
+
+    if payment:
+        scored = score_against_invoices(payment, invoices)
+    else:
+        scored = {
+            "status": "not_found",
+            "payment": None,
+            "candidates": [],
+            "recommendation": None,
+            "needs_review": True,
+        }
+
+    return {
+        "payment_id": pid,
+        "customer_id": resolved_customer,
+        "payment": payment,
+        "invoices": invoices,
+        "scored": scored,
+    }
 
 
 def _confidence_from_candidate(
@@ -165,7 +204,7 @@ def build_evidence_pack(
                         "text": ref,
                         "extracted_fields": {"raw_reference": ref},
                         "confidence": 0.4,
-                        "thin_evidence": bool(_THIN_REMITTANCE.search(ref)),
+                        "thin_evidence": is_thin_remittance_text(ref),
                         "method": "bank_reference",
                     },
                 )
@@ -288,9 +327,9 @@ def _remittance_thin_from_evidence(
             return False
         text = str(fields.get("text") or extracted.get("raw_reference") or "")
         if text:
-            return bool(_THIN_REMITTANCE.search(text))
+            return is_thin_remittance_text(text)
     ref = str((payment or {}).get("reference") or "")
-    return bool(_THIN_REMITTANCE.search(ref)) if ref else True
+    return is_thin_remittance_text(ref) if ref else True
 
 
 def _draft_hypothesis(
@@ -483,26 +522,16 @@ def investigate_case(
     mode = copilot_mode()
     rules_only = mode == "rules_only"
 
-    payment = repo.get_payment(payment_id.strip().upper())
-    invoices: list[dict[str, Any]] = []
-    if customer_id:
-        invoices = list(repo.list_invoices(customer_id=customer_id) or [])
-    elif payment:
-        cust = payment.get("customer_id")
-        if cust:
-            invoices = list(repo.list_invoices(customer_id=str(cust)) or [])
-            customer_id = str(cust)
-
-    if payment:
-        scored = score_against_invoices(payment, invoices)
-    else:
-        scored = {
-            "status": "not_found",
-            "payment": None,
-            "candidates": [],
-            "recommendation": None,
-            "needs_review": True,
-        }
+    ctx = load_payment_score_context(
+        payment_id=payment_id,
+        customer_id=customer_id,
+        resolve_customer_from_payment=True,
+    )
+    payment = ctx["payment"]
+    invoices = ctx["invoices"]
+    scored = ctx["scored"]
+    customer_id = ctx["customer_id"]
+    payment_id = ctx["payment_id"] or payment_id
 
     evidence = build_evidence_pack(
         case_id=case_id,

@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from data_plane import config as data_config
+from finance_ops.copilot.config import _truthy
 
 SPIKE_DIR = data_config.DATA_DIR / "spike_a"
 SPIKE_A_WALKTHROUGH = ("PAY-1001", "PAY-2001", "PAY-3001")
@@ -34,10 +35,6 @@ SPIKE_A_MARKERS = ("PAY-1001", "PAY-2001")
 
 # Default pack restores the richer combined workbench dataset.
 DEFAULT_DEMO_SEED_PACK = "base+spike_a"
-
-
-def _truthy(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _falsy(name: str) -> bool:
